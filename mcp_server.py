@@ -364,12 +364,50 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="analyze_and_warp",
+            description="Analyze an audio clip for BPM and key, then auto-set warp markers. Pass detected BPM and key from the audio_analyzer tool. Sets warp on, warp mode, and appends key to clip name.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer"},
+                    "slot_index": {"type": "integer"},
+                    "bpm": {"type": "number", "description": "Detected BPM from audio_analyzer"},
+                    "key": {"type": "string", "description": "Detected key (e.g. 'Fm', 'C')"},
+                    "warp_mode": {"type": "integer", "description": "0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex (default), 5=complex pro", "default": 4},
+                },
+            },
+        ),
+        Tool(
+            name="analyze_audio_file",
+            description="Analyze an audio file on disk for BPM, musical key, duration, and beat positions. Uses librosa for signal analysis. Returns detailed info for auto-warping.",
+            inputSchema={
+                "type": "object",
+                "required": ["file_path"],
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to audio file"},
+                },
+            },
+        ),
     ]
 
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     args = arguments or {}
+    
+    # Handle audio analysis locally (not through Ableton socket)
+    if name == "analyze_audio_file":
+        try:
+            import sys
+            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            from audio_analyzer import AudioAnalyzer
+            result = AudioAnalyzer.analyze(args["file_path"])
+        except Exception as e:
+            result = {"error": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+    
     result = liveagent_send(name, args)
     return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 

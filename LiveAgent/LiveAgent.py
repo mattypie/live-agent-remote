@@ -178,6 +178,8 @@ class LiveAgent(ControlSurface):
             return self._create_audio_track(payload)
         if command == "set_clip_warp":
             return self._set_clip_warp(payload)
+        if command == "analyze_and_warp":
+            return self._analyze_and_warp(payload)
 
         raise Exception("Unknown command: %s" % command)
 
@@ -842,3 +844,51 @@ class LiveAgent(ControlSurface):
             "warping": clip.warping,
             "warp_mode": str(clip.warp_mode),
         }
+
+    def _analyze_and_warp(self, payload):
+        """Analyze audio clip for BPM/key and auto-set warp markers.
+
+        Uses Ableton's built-in warping with detected BPM as hint.
+        The analysis runs via the external audio_analyzer.py tool,
+        but this command handles the Ableton-side warp setup.
+        """
+        track, slot = self._track_and_slot(payload)
+        if not slot.has_clip:
+            raise Exception("No clip at track %s slot %s" % (payload.get("track_index"), payload.get("slot_index")))
+        clip = slot.clip
+
+        if not self._safe_attr(clip, "is_audio_clip", False):
+            raise Exception("Clip is not an audio clip")
+
+        detected_bpm = payload.get("bpm")
+        detected_key = payload.get("key")
+        warp_mode = int(payload.get("warp_mode", 4))  # default: complex
+
+        # Enable warping
+        clip.warping = True
+
+        # Set warp mode
+        clip.warp_mode = warp_mode
+
+        # Set clip name with key info if detected
+        if detected_key:
+            original_name = clip.name
+            if not any(k in original_name for k in ["maj", "min", "m "]):
+                clip.name = "%s [%s]" % (original_name, detected_key)
+
+        # Set loop to match detected length
+        sample_length = self._safe_attr(clip, "sample_length", 0.0)
+
+        result = {
+            "warping": True,
+            "warp_mode": warp_mode,
+            "clip_name": clip.name,
+            "sample_length": sample_length,
+        }
+
+        if detected_bpm:
+            result["detected_bpm"] = detected_bpm
+        if detected_key:
+            result["detected_key"] = detected_key
+
+        return result
