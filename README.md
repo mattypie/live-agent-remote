@@ -123,6 +123,7 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `set_parameter_value` | Set a device parameter | `track_index`, `device_index/name`, `parameter_index/name`, `value` |
 | `write_clip_automation` | Write automation envelope | `track_index`, `slot_index`, `device_*`, `parameter_*`, `points[]` |
 | `load_device` | Load a plugin onto a track | `track_index`, `device_name`, `browser_type` |
+| `list_browser_devices` | Search/list available plugins | `browser_type`, `query`, `max_results` |
 
 ### Note Format
 
@@ -229,6 +230,7 @@ client.close()
 | `set_parameter_value` | デバイスパラメータ設定 |
 | `write_clip_automation` | オートメーション書き込み |
 | `load_device` | プラグインをトラックにロード |
+| `list_browser_devices` | プラグイン一覧検索 |
 
 ---
 
@@ -285,6 +287,7 @@ client.close()
 | `set_parameter_value` | 设置参数值 |
 | `write_clip_automation` | 写入自动化 |
 | `load_device` | 加载插件到轨道 |
+| `list_browser_devices` | 搜索/列出可用插件 |
 
 ---
 

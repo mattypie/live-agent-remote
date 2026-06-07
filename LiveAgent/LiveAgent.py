@@ -162,6 +162,8 @@ class LiveAgent(ControlSurface):
             return self._write_clip_automation(payload)
         if command == "load_device":
             return self._load_device(payload)
+        if command == "list_browser_devices":
+            return self._list_browser_devices(payload)
 
         raise Exception("Unknown command: %s" % command)
 
@@ -449,6 +451,102 @@ class LiveAgent(ControlSurface):
             "track": self._track_summary(idx, track),
             "loaded_device": device_name,
         }
+
+    def _list_browser_devices(self, payload):
+        """List available devices from Ableton's browser.
+
+        Optionally filter by browser_type and search query.
+        """
+        browser_type = payload.get("browser_type", "plug-in")
+        query = payload.get("query", "").lower()
+        max_results = int(payload.get("max_results", 100))
+
+        song = self.song()
+        browser = song.browser
+
+        # Find the matching browser category
+        target_category = None
+        for category in browser.categories:
+            cat_name = category.name.lower()
+            if browser_type.lower() == "plug-in" and "plug-in" in cat_name:
+                target_category = category
+                break
+            elif browser_type.lower() == "instrument" and "instrument" in cat_name:
+                target_category = category
+                break
+            elif browser_type.lower() == "audio effect" and "audio effect" in cat_name:
+                target_category = category
+                break
+            elif browser_type.lower() == "midi effect" and "midi effect" in cat_name:
+                target_category = category
+                break
+
+        if target_category is None:
+            for category in browser.categories:
+                if "plug" in category.name.lower():
+                    target_category = category
+                    break
+
+        if target_category is None:
+            raise Exception(
+                "Could not find browser category '%s'. Available: %s"
+                % (browser_type, [c.name for c in browser.categories])
+            )
+
+        # Collect all loadable devices from the browser tree
+        devices = []
+        self._collect_browser_items(target_category, devices, query, max_results, path=[])
+
+        return {
+            "category": target_category.name,
+            "query": payload.get("query", ""),
+            "count": len(devices),
+            "devices": devices,
+        }
+
+    def _collect_browser_items(self, node, results, query, max_results, path):
+        """Recursively collect loadable items from browser tree."""
+        if len(results) >= max_results:
+            return
+
+        node_name = self._safe_attr(node, "name", "")
+
+        # Build current path
+        current_path = path + [node_name] if node_name else path
+
+        # Check if this node is loadable
+        is_loadable = self._safe_attr(node, "is_loadable", False)
+        if is_loadable and node_name:
+            if not query or query in node_name.lower():
+                results.append({
+                    "name": node_name,
+                    "path": " > ".join(current_path),
+                })
+                if len(results) >= max_results:
+                    return
+
+        # Recurse into children
+        children = self._safe_attr(node, "children", None)
+        if children:
+            for child in children:
+                self._collect_browser_items(child, results, query, max_results, current_path)
+                if len(results) >= max_results:
+                    return
+
+        # Check items list
+        items = self._safe_attr(node, "items", None)
+        if items:
+            for item in items:
+                if len(results) >= max_results:
+                    return
+                item_name = self._safe_attr(item, "name", "")
+                item_loadable = self._safe_attr(item, "is_loadable", False)
+                if item_loadable and item_name:
+                    if not query or query in item_name.lower():
+                        results.append({
+                            "name": item_name,
+                            "path": " > ".join(current_path + [item_name]),
+                        })
 
     def _find_browser_item(self, category, target_name):
         """Recursively search browser tree for a device by name."""

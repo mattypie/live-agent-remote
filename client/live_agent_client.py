@@ -142,6 +142,13 @@ class LiveAgentClient:
             "browser_type": browser_type,
         })
 
+    def list_browser_devices(self, browser_type="plug-in", query="", max_results=100):
+        return self._send("list_browser_devices", {
+            "browser_type": browser_type,
+            "query": query,
+            "max_results": max_results,
+        })
+
     # ── lifecycle ──────────────────────────────────────────────
 
     def close(self):

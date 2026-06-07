@@ -133,6 +133,14 @@ class LiveAgentClient {
       browser_type: browserType,
     });
   }
+
+  listBrowserDevices(browserType = 'plug-in', query = '', maxResults = 100) {
+    return this._send('list_browser_devices', {
+      browser_type: browserType,
+      query,
+      max_results: maxResults,
+    });
+  }
 }
 
 module.exports = { LiveAgentClient };
