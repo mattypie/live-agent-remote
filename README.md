@@ -333,6 +333,66 @@ client.close()
 | `write_clip_automation` | オートメーション書き込み |
 | `load_device` | プラグインをトラックにロード |
 | `list_browser_devices` | プラグイン一覧検索 |
+| `create_audio_track` | オーディオトラック作成 |
+| `import_audio_clip` | オーディオファイルをトラックにインポート |
+| `get_clip_info` | クリップ詳細取得（名前、タイプ、ループ、ワープ） |
+| `set_clip_properties` | クリップ名・色・ループ・ピッチ・ゲイン設定 |
+| `duplicate_clip` | クリップを別スロットに複製 |
+| `delete_clip` | クリップ削除 |
+| `set_clip_warp` | ワープON/OFF・ワープモード設定 |
+| `analyze_and_warp` | BPM/キー検出結果で自動ワープ設定 |
+| `analyze_audio_file` | オーディオファイルのBPM・キー・ビート解析 |
+| `detect_pitch` | ワンショットサンプルのピッチ検出 |
+| `analyze_folder` | フォルダ一括解析（ピッチ順ソート） |
+| `find_compatible_samples` | Camelot Wheelでキー互換サンプル検索 |
+
+### オーディオ解析
+
+[librosa](https://librosa.org/)による内蔵オーディオ解析：
+
+- **BPM検出** — `librosa.beat.beat_track`でテンポ抽出
+- **キー検出** — Krumhansl-Schmucklerアルゴリズムで全24調を判定
+- **ピッチ検出** — `pyin`でワンショット（キック・スネア等）の基本音高を検出
+- **Camelot Wheel** — DJスタイルのキーマッチング
+- **一括解析** — フォルダ全体を解析、ピッチ順でソート
+- **自動ワープ** — BPM/キー検出→Abletonにワープ自動適用
+
+**CLI使用例:**
+```bash
+python audio_analyzer.py kick.wav                  # 単一ファイル解析
+python audio_analyzer.py snare.wav --pitch-only    # ピッチ検出のみ
+python audio_analyzer.py ./Kicks/ --folder --mode pitch  # フォルダ一括（ピッチ順）
+python audio_analyzer.py ./Kicks/ --compatible Fm  # Fmと互換するサンプル検索
+```
+
+### MCPサーバー（Claude Desktop / Cursor等）
+
+LiveAgentは**MCPサーバー**を内蔵しており、AIエージェントからAbletonを直接操作できます。
+
+**セットアップ:**
+
+1. 依存パッケージをインストール：
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]" librosa
+```
+
+2. MCPクライアントの設定ファイルに追加：
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ableton-live": {
+      "command": "/absolute/path/to/live-agent-remote/.venv/bin/python3",
+      "args": ["/absolute/path/to/live-agent-remote/mcp_server.py"]
+    }
+  }
+}
+```
+
+3. MCPクライアントを再起動。全26コマンドがツールとして利用可能！
 
 ---
 
@@ -390,6 +450,66 @@ client.close()
 | `write_clip_automation` | 写入自动化 |
 | `load_device` | 加载插件到轨道 |
 | `list_browser_devices` | 搜索/列出可用插件 |
+| `create_audio_track` | 创建音频轨道 |
+| `import_audio_clip` | 导入音频文件到轨道 |
+| `get_clip_info` | 获取剪辑详情（名称、类型、循环、Warp） |
+| `set_clip_properties` | 设置剪辑名称、颜色、循环、音高、增益 |
+| `duplicate_clip` | 复制剪辑到其他位置 |
+| `delete_clip` | 删除剪辑 |
+| `set_clip_warp` | 设置Warp开关和模式 |
+| `analyze_and_warp` | 使用BPM/调性检测结果自动设置Warp |
+| `analyze_audio_file` | 分析音频文件的BPM、调性、节拍 |
+| `detect_pitch` | 检测单次采样（Kick/Snare等）的音高 |
+| `analyze_folder` | 批量分析文件夹，按音高排序 |
+| `find_compatible_samples` | 使用Camelot Wheel搜索调性兼容的采样 |
+
+### 音频分析
+
+基于 [librosa](https://librosa.org/) 的内置音频分析：
+
+- **BPM检测** — `librosa.beat.beat_track` 节拍提取
+- **调性检测** — Krumhansl-Schmuckler算法，支持全部24个调
+- **音高检测** — `pyin` 单音检测，适用于Kick/Snare等单次采样
+- **Camelot Wheel** — DJ风格的调性兼容匹配
+- **批量分析** — 分析整个文件夹，按音高排序
+- **自动Warp** — 检测BPM/调性后自动应用Warp设置
+
+**CLI使用：**
+```bash
+python audio_analyzer.py kick.wav                  # 分析单个文件
+python audio_analyzer.py snare.wav --pitch-only    # 仅检测音高
+python audio_analyzer.py ./Kicks/ --folder --mode pitch  # 批量分析（按音高排序）
+python audio_analyzer.py ./Kicks/ --compatible Fm  # 搜索与Fm兼容的采样
+```
+
+### MCP服务器（Claude Desktop / Cursor等）
+
+LiveAgent内置 **MCP服务器**，支持AI代理直接控制Ableton。
+
+**安装：**
+
+1. 安装依赖：
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]" librosa
+```
+
+2. 添加到MCP客户端配置：
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ableton-live": {
+      "command": "/path/to/live-agent-remote/.venv/bin/python3",
+      "args": ["/path/to/live-agent-remote/mcp_server.py"]
+    }
+  }
+}
+```
+
+3. 重启MCP客户端，全部26个命令即可作为工具使用！
 
 ---
 
@@ -430,6 +550,61 @@ client.load_device(track_index=1, device_name="Massive")  # 플러그인 로드
 client.close()
 ```
 
+### 명령 목록
+
+| 명령 | 설명 |
+|---|---|
+| `ping` | 연결 확인 |
+| `get_live_state` | 템포, 트랙, 씬, 재생 상태 가져오기 |
+| `list_tracks` | 모든 트랙 나열 |
+| `create_midi_track` | MIDI 트랙 생성 |
+| `create_session_clip` | 세션 클립 생성 |
+| `write_midi_notes` | MIDI 노트 쓰기 |
+| `read_clip_notes` | 노트 읽기 |
+| `clear_clip_notes` | 노트 전체 삭제 |
+| `list_devices` | 디바이스 나열 |
+| `set_parameter_value` | 파라미터 값 설정 |
+| `write_clip_automation` | 오토메이션 쓰기 |
+| `load_device` | 플러그인 로드 |
+| `list_browser_devices` | 사용 가능한 플러그인 검색 |
+| `create_audio_track` | 오디오 트랙 생성 |
+| `import_audio_clip` | 오디오 파일을 트랙에 임포트 |
+| `get_clip_info` | 클립 상세 정보 (이름, 유형, 루프, 워프) |
+| `set_clip_properties` | 클립 이름, 색상, 루프, 피치, 게인 설정 |
+| `duplicate_clip` | 클립을 다른 슬롯에 복제 |
+| `delete_clip` | 클립 삭제 |
+| `set_clip_warp` | 워프 ON/OFF 및 모드 설정 |
+| `analyze_and_warp` | BPM/키 분석 결과로 자동 워프 설정 |
+| `analyze_audio_file` | 오디오 파일의 BPM, 키, 비트 분석 |
+| `detect_pitch` | 원샷 샘플의 피치 감지 |
+| `analyze_folder` | 폴더 일괄 분석 (피치순 정렬) |
+| `find_compatible_samples` | Camelot Wheel로 키 호환 샘플 검색 |
+
+### 오디오 분석
+
+[librosa](https://librosa.org/) 기반 내장 오디오 분석:
+
+- **BPM 감지** — `librosa.beat.beat_track` 템포 추출
+- **키 감지** — Krumhansl-Schmuckler 알고리즘으로 24개 키 판정
+- **피치 감지** — `pyin`으로 원샷 (킥, 스네어 등)의 기본 음높이 감지
+- **Camelot Wheel** — DJ 스타일 키 매칭
+- **일괄 분석** — 폴더 전체 분석, 피치순 정렬
+- **자동 워프** — BPM/키 감지 후 Ableton에 워프 자동 적용
+
+### MCP 서버 (Claude Desktop / Cursor 등)
+
+LiveAgent에 **MCP 서버**가 내장되어 있어 AI 에이전트에서 Ableton을 직접 제어할 수 있습니다.
+
+**설정:**
+
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]" librosa
+```
+
+**Claude Desktop** 설정에 추가 후 재시작하면 26개 명령을 도구로 사용할 수 있습니다!
+
 ---
 
 ## Español
@@ -461,6 +636,61 @@ tracks = client.list_tracks()
 client.load_device(track_index=1, device_name="Massive")
 client.close()
 ```
+
+### Comandos
+
+| Comando | Descripción |
+|---|---|
+| `ping` | Verificar conexión |
+| `get_live_state` | Obtener tempo, pistas, escenas, estado de reproducción |
+| `list_tracks` | Listar todas las pistas |
+| `create_midi_track` | Crear pista MIDI |
+| `create_session_clip` | Crear clip en vista de sesión |
+| `write_midi_notes` | Escribir notas MIDI |
+| `read_clip_notes` | Leer notas del clip |
+| `clear_clip_notes` | Eliminar todas las notas |
+| `list_devices` | Listar dispositivos |
+| `set_parameter_value` | Establecer valor de parámetro |
+| `write_clip_automation` | Escribir automatización |
+| `load_device` | Cargar plugin en pista |
+| `list_browser_devices` | Buscar/listar plugins disponibles |
+| `create_audio_track` | Crear pista de audio |
+| `import_audio_clip` | Importar archivo de audio a pista |
+| `get_clip_info` | Detalles del clip (nombre, tipo, loop, warp) |
+| `set_clip_properties` | Nombre, color, loop, pitch, ganancia del clip |
+| `duplicate_clip` | Duplicar clip en otro slot |
+| `delete_clip` | Eliminar clip |
+| `set_clip_warp` | Activar/desactivar Warp y modo |
+| `analyze_and_warp` | Auto-warp con BPM/tonalidad detectados |
+| `analyze_audio_file` | Analizar BPM, tonalidad, beats de archivo |
+| `detect_pitch` | Detectar pitch de muestra one-shot |
+| `analyze_folder` | Análisis por lotes, ordenar por pitch |
+| `find_compatible_samples` | Buscar muestras compatibles (Camelot Wheel) |
+
+### Analizador de Audio
+
+Análisis de audio integrado con [librosa](https://librosa.org/):
+
+- **Detección de BPM** — Extracción de tempo
+- **Detección de tonalidad** — Algoritmo Krumhansl-Schmuckler, 24 tonalidades
+- **Detección de pitch** — Para muestras one-shot (kicks, snares)
+- **Camelot Wheel** — Coincidencia armónica estilo DJ
+- **Análisis por lotes** — Analizar carpetas enteras, ordenar por pitch
+- **Auto-Warp** — Detectar BPM/tonalidad y aplicar Warp automáticamente
+
+### Servidor MCP (Claude Desktop / Cursor etc.)
+
+LiveAgent incluye un **servidor MCP** que permite a agentes de IA controlar Ableton directamente.
+
+**Configuración:**
+
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]" librosa
+```
+
+¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 26 comandos como herramientas!
 
 ---
 
@@ -494,11 +724,64 @@ client.load_device(track_index=1, device_name="Massive")
 client.close()
 ```
 
+### Commandes
+
+| Commande | Description |
+|---|---|
+| `ping` | Vérifier la connexion |
+| `get_live_state` | Tempo, pistes, scènes, état de lecture |
+| `list_tracks` | Lister toutes les pistes |
+| `create_midi_track` | Créer une piste MIDI |
+| `create_session_clip` | Créer un clip en vue session |
+| `write_midi_notes` | Écrire des notes MIDI |
+| `read_clip_notes` | Lire les notes du clip |
+| `clear_clip_notes` | Supprimer toutes les notes |
+| `list_devices` | Lister les appareils |
+| `set_parameter_value` | Définir la valeur d'un paramètre |
+| `write_clip_automation` | Écrire l'automation |
+| `load_device` | Charger un plugin sur une piste |
+| `list_browser_devices` | Rechercher/lister les plugins disponibles |
+| `create_audio_track` | Créer une piste audio |
+| `import_audio_clip` | Importer un fichier audio dans une piste |
+| `get_clip_info` | Détails du clip (nom, type, boucle, warp) |
+| `set_clip_properties` | Nom, couleur, boucle, pitch, gain du clip |
+| `duplicate_clip` | Dupliquer le clip vers un autre emplacement |
+| `delete_clip` | Supprimer le clip |
+| `set_clip_warp` | Activer/désactiver le Warp et le mode |
+| `analyze_and_warp` | Auto-warp avec BPM/tonalité détectés |
+| `analyze_audio_file` | Analyser le BPM, la tonalité et les beats |
+| `detect_pitch` | Détecter le pitch d'un sample one-shot |
+| `analyze_folder` | Analyse par lot, trier par pitch |
+| `find_compatible_samples` | Rechercher des samples compatibles (Camelot Wheel) |
+
+### Analyseur Audio
+
+Analyse audio intégrée avec [librosa](https://librosa.org/) :
+
+- **Détection BPM** — Extraction du tempo
+- **Détection de tonalité** — Algorithme Krumhansl-Schmuckler, 24 tonalités
+- **Détection de pitch** — Pour les samples one-shot (kicks, snares)
+- **Camelot Wheel** — Correspondance harmonique style DJ
+- **Analyse par lot** — Analyser des dossiers entiers, trier par pitch
+- **Auto-Warp** — Détecter BPM/tonalité et appliquer le Warp automatiquement
+
+### Serveur MCP (Claude Desktop / Cursor etc.)
+
+LiveAgent inclut un **serveur MCP** permettant aux agents IA de contrôler Ableton directement.
+
+**Configuration :**
+
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]" librosa
+```
+
+Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 26 commandes comme outils !
+
 ---
 
 ## License
-
-MIT License — use freely, modify freely, share freely.
 
 <div align="center">
 
