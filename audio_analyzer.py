@@ -184,22 +184,301 @@ class AudioAnalyzer:
 
         return result
 
+    # ── One-Shot Pitch Detection ────────────────────────────
+
+    @staticmethod
+    def detect_pitch(file_path):
+        """Detect the fundamental pitch of a one-shot sample (kick, snare, etc).
+
+        Returns the dominant frequency and its closest musical note.
+        """
+        if not HAS_LIBROSA:
+            return {"error": "librosa not installed"}
+
+        y, sr = librosa.load(file_path, sr=22050)
+
+        # Use pyin for monophonic pitch detection
+        f0, voiced_flags, voiced_probs = librosa.pyin(
+            y, fmin=20, fmax=2000, sr=sr
+        )
+
+        # Filter out NaN values
+        valid_f0 = f0[~np.isnan(f0)]
+
+        if len(valid_f0) == 0:
+            # No clear pitch — likely atonal/noise (some snares, hats)
+            # Fallback: use spectral centroid
+            centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+            avg_centroid = float(np.mean(centroid))
+            note_info = AudioAnalyzer._freq_to_note(avg_centroid)
+            return {
+                "pitch": note_info["note"],
+                "frequency": round(avg_centroid, 2),
+                "note_number": note_info["note_number"],
+                "octave": note_info["octave"],
+                "confidence": 0.0,
+                "is_atonal": True,
+                "type": "noise/atonal",
+            }
+
+        # Weighted average pitch (weight by probability)
+        valid_probs = voiced_probs[~np.isnan(f0)]
+        if len(valid_probs) == len(valid_f0):
+            weights = valid_probs
+        else:
+            weights = np.ones(len(valid_f0))
+        weights = weights / (np.sum(weights) + 1e-10)
+
+        avg_freq = float(np.average(valid_f0, weights=weights))
+        median_freq = float(np.median(valid_f0))
+
+        # Use the most common pitch (mode-like)
+        # Bin into note ranges and find the most frequent
+        note_counts = {}
+        for freq in valid_f0:
+            n = AudioAnalyzer._freq_to_note(freq)
+            key = n["note"]
+            note_counts[key] = note_counts.get(key, 0) + 1
+
+        dominant_note = max(note_counts, key=note_counts.get)
+        confidence = note_counts[dominant_note] / len(valid_f0)
+
+        note_info = AudioAnalyzer._freq_to_note(median_freq)
+
+        return {
+            "pitch": dominant_note,
+            "frequency": round(median_freq, 2),
+            "note_number": note_info["note_number"],
+            "octave": note_info["octave"],
+            "confidence": round(confidence, 3),
+            "is_atonal": False,
+            "type": "tonal",
+        }
+
+    @staticmethod
+    def _freq_to_note(freq):
+        """Convert frequency to closest musical note."""
+        if freq <= 0:
+            return {"note": "C1", "note_number": 24, "octave": 1, "cents_off": 0}
+
+        # MIDI note number from frequency
+        note_number = 12 * np.log2(freq / 440.0) + 69
+        note_number_rounded = int(round(note_number))
+        cents_off = int((note_number - note_number_rounded) * 100)
+
+        octave = (note_number_rounded // 12) - 1
+        note_idx = note_number_rounded % 12
+        note_name = AudioAnalyzer.KEY_NAMES[note_idx]
+
+        return {
+            "note": "%s%d" % (note_name, octave),
+            "note_number": note_number_rounded,
+            "octave": octave,
+            "cents_off": cents_off,
+        }
+
+    # ── Camelot Wheel ───────────────────────────────────────
+
+    CAMELOT_MAP = {
+        # Minor keys
+        "Am": "8A", "A#m": "8A", "Bbm": "8A",
+        "Bm": "7A",
+        "Cm": "5A",
+        "C#m": "12A", "Dbm": "12A",
+        "Dm": "7A",
+        "D#m": "2A", "Ebm": "2A",
+        "Em": "9A",
+        "Fm": "4A",
+        "F#m": "11A", "Gbm": "11A",
+        "Gm": "6A",
+        "G#m": "1A", "Abm": "1A",
+        # Major keys
+        "A": "11B",
+        "A#": "6B", "Bb": "6B",
+        "B": "1B",
+        "C": "8B",
+        "C#": "3B", "Db": "3B",
+        "D": "10B",
+        "D#": "5B", "Eb": "5B",
+        "E": "12B",
+        "F": "7B",
+        "F#": "2B", "Gb": "2B",
+        "G": "9B",
+        "G#": "4B", "Ab": "4B",
+    }
+
+    CAMELOT_COMPATIBLE = {
+        # Same key, +1, -1 on same letter (A↔A, B↔B)
+        "1A": ["1A", "2A", "12A", "1B"],
+        "2A": ["2A", "3A", "1A", "2B"],
+        "3A": ["3A", "4A", "2A", "3B"],
+        "4A": ["4A", "5A", "3A", "4B"],
+        "5A": ["5A", "6A", "4A", "5B"],
+        "6A": ["6A", "7A", "5A", "6B"],
+        "7A": ["7A", "8A", "6A", "7B"],
+        "8A": ["8A", "9A", "7A", "8B"],
+        "9A": ["9A", "10A", "8A", "9B"],
+        "10A": ["10A", "11A", "9A", "10B"],
+        "11A": ["11A", "12A", "10A", "11B"],
+        "12A": ["12A", "1A", "11A", "12B"],
+        "1B": ["1B", "2B", "12B", "1A"],
+        "2B": ["2B", "3B", "1B", "2A"],
+        "3B": ["3B", "4B", "2B", "3A"],
+        "4B": ["4B", "5B", "3B", "4A"],
+        "5B": ["5B", "6B", "4B", "5A"],
+        "6B": ["6B", "7B", "5B", "6A"],
+        "7B": ["7B", "8B", "6B", "7A"],
+        "8B": ["8B", "9B", "7B", "8A"],
+        "9B": ["9B", "10B", "8B", "9A"],
+        "10B": ["10B", "11B", "9B", "10A"],
+        "11B": ["11B", "12B", "10B", "11A"],
+        "12B": ["12B", "1B", "11B", "12A"],
+    }
+
+    @staticmethod
+    def get_camelot(key):
+        """Get Camelot Wheel notation for a key."""
+        return AudioAnalyzer.CAMELOT_MAP.get(key, "??")
+
+    @staticmethod
+    def is_harmonically_compatible(key1, key2):
+        """Check if two keys are compatible on the Camelot Wheel."""
+        c1 = AudioAnalyzer.get_camelot(key1)
+        c2 = AudioAnalyzer.get_camelot(key2)
+        if c1 == "??" or c2 == "??":
+            return False
+        return c2 in AudioAnalyzer.CAMELOT_COMPATIBLE.get(c1, [])
+
+    # ── Batch Analysis ──────────────────────────────────────
+
+    @staticmethod
+    def analyze_folder(folder_path, mode="full"):
+        """Analyze all audio files in a folder.
+
+        Args:
+            folder_path: Path to folder
+            mode: 'full' (BPM+key+pitch), 'pitch' (pitch only), 'key' (key only), 'bpm' (BPM only)
+
+        Returns:
+            List of analysis results, sorted by pitch/note number
+        """
+        import os
+
+        extensions = {".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".m4a"}
+        results = []
+
+        for item in sorted(os.listdir(folder_path)):
+            ext = os.path.splitext(item)[1].lower()
+            if ext not in extensions:
+                continue
+
+            file_path = os.path.join(folder_path, item)
+            try:
+                if mode == "pitch":
+                    r = AudioAnalyzer.detect_pitch(file_path)
+                    r["file"] = item
+                elif mode == "key":
+                    r = AudioAnalyzer.detect_key(file_path)
+                    r["file"] = item
+                elif mode == "bpm":
+                    r = AudioAnalyzer.detect_bpm(file_path)
+                    r["file"] = item
+                else:
+                    r = AudioAnalyzer.analyze(file_path)
+                    # Also add pitch for one-shots
+                    pitch = AudioAnalyzer.detect_pitch(file_path)
+                    r["pitch"] = pitch.get("pitch", "?")
+                    r["note_number"] = pitch.get("note_number", 0)
+                    r["is_atonal"] = pitch.get("is_atonal", False)
+                    r["camelot"] = AudioAnalyzer.get_camelot(r.get("key", ""))
+                    r["file"] = item
+
+                results.append(r)
+            except Exception as e:
+                results.append({"file": item, "error": str(e)})
+
+        # Sort by note_number (pitch ascending)
+        if mode in ("full", "pitch"):
+            results.sort(key=lambda x: x.get("note_number", 999))
+
+        return results
+
+    @staticmethod
+    def find_compatible_samples(folder_path, target_key, mode="full"):
+        """Find samples in a folder that are harmonically compatible with a target key.
+
+        Uses Camelot Wheel matching.
+        """
+        results = AudioAnalyzer.analyze_folder(folder_path, mode=mode)
+        compatible = []
+        incompatible = []
+
+        for r in results:
+            if "error" in r:
+                continue
+            sample_key = r.get("key", "")
+            if not sample_key:
+                # Use pitch as key for one-shots
+                pitch = r.get("pitch", "")
+                if pitch and len(pitch) > 1:
+                    # e.g. "F2" -> "F" -> check compatibility
+                    root = pitch[:-1]
+                    sample_key = root + "m"  # assume minor for drums
+                    r["assumed_key"] = sample_key
+
+            if sample_key:
+                is_compat = AudioAnalyzer.is_harmonically_compatible(target_key, sample_key)
+                r["compatible_with"] = target_key
+                r["is_compatible"] = is_compat
+                r["camelot"] = AudioAnalyzer.get_camelot(sample_key)
+                if is_compat:
+                    compatible.append(r)
+                else:
+                    incompatible.append(r)
+            else:
+                r["is_compatible"] = None
+                incompatible.append(r)
+
+        return {
+            "target_key": target_key,
+            "target_camelot": AudioAnalyzer.get_camelot(target_key),
+            "compatible_count": len(compatible),
+            "total_analyzed": len(results),
+            "compatible": compatible,
+            "others": incompatible,
+        }
+
 
 if __name__ == "__main__":
     import sys
     import json
 
     if len(sys.argv) < 2:
-        print("Usage: python audio_analyzer.py <audio_file> [--bpm-only] [--key-only]")
+        print("Usage:")
+        print("  python audio_analyzer.py <file> [--bpm-only] [--key-only] [--pitch-only]")
+        print("  python audio_analyzer.py <folder> --folder [--mode full|pitch|key|bpm]")
+        print("  python audio_analyzer.py <folder> --compatible <key>")
         sys.exit(1)
 
-    file_path = sys.argv[1]
+    target = sys.argv[1]
 
-    if "--bpm-only" in sys.argv:
-        result = AudioAnalyzer.detect_bpm(file_path)
+    if "--folder" in sys.argv:
+        mode = "full"
+        for i, arg in enumerate(sys.argv):
+            if arg == "--mode" and i + 1 < len(sys.argv):
+                mode = sys.argv[i + 1]
+        result = AudioAnalyzer.analyze_folder(target, mode=mode)
+    elif "--compatible" in sys.argv:
+        key_idx = sys.argv.index("--compatible") + 1
+        target_key = sys.argv[key_idx] if key_idx < len(sys.argv) else "Am"
+        result = AudioAnalyzer.find_compatible_samples(target, target_key)
+    elif "--pitch-only" in sys.argv:
+        result = AudioAnalyzer.detect_pitch(target)
+    elif "--bpm-only" in sys.argv:
+        result = AudioAnalyzer.detect_bpm(target)
     elif "--key-only" in sys.argv:
-        result = AudioAnalyzer.detect_key(file_path)
+        result = AudioAnalyzer.detect_key(target)
     else:
-        result = AudioAnalyzer.analyze(file_path)
+        result = AudioAnalyzer.analyze(target)
 
     print(json.dumps(result, indent=2, ensure_ascii=False))

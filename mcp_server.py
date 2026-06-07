@@ -390,6 +390,42 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="detect_pitch",
+            description="Detect the fundamental pitch of a one-shot audio sample (kick, snare, etc). Returns note name, frequency, octave, and whether the sample is tonal or atonal.",
+            inputSchema={
+                "type": "object",
+                "required": ["file_path"],
+                "properties": {
+                    "file_path": {"type": "string", "description": "Absolute path to audio file"},
+                },
+            },
+        ),
+        Tool(
+            name="analyze_folder",
+            description="Analyze all audio files in a folder for BPM, key, and pitch. Returns results sorted by pitch (note number). Use mode='pitch' for quick one-shot sorting.",
+            inputSchema={
+                "type": "object",
+                "required": ["folder_path"],
+                "properties": {
+                    "folder_path": {"type": "string", "description": "Absolute path to folder"},
+                    "mode": {"type": "string", "description": "Analysis mode: 'full' (BPM+key+pitch), 'pitch', 'key', 'bpm'", "default": "full"},
+                },
+            },
+        ),
+        Tool(
+            name="find_compatible_samples",
+            description="Find samples in a folder that are harmonically compatible with a target key using the Camelot Wheel. Perfect for finding kicks/snares that match your song's key.",
+            inputSchema={
+                "type": "object",
+                "required": ["folder_path", "target_key"],
+                "properties": {
+                    "folder_path": {"type": "string", "description": "Absolute path to folder containing samples"},
+                    "target_key": {"type": "string", "description": "Target key (e.g. 'Fm', 'C', 'Am')"},
+                    "mode": {"type": "string", "description": "Analysis mode", "default": "full"},
+                },
+            },
+        ),
     ]
 
 
@@ -404,6 +440,36 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
             sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.analyze(args["file_path"])
+        except Exception as e:
+            result = {"error": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+    if name == "detect_pitch":
+        try:
+            import sys
+            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            from audio_analyzer import AudioAnalyzer
+            result = AudioAnalyzer.detect_pitch(args["file_path"])
+        except Exception as e:
+            result = {"error": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+    if name == "analyze_folder":
+        try:
+            import sys
+            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            from audio_analyzer import AudioAnalyzer
+            result = AudioAnalyzer.analyze_folder(args["folder_path"], mode=args.get("mode", "full"))
+        except Exception as e:
+            result = {"error": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+    if name == "find_compatible_samples":
+        try:
+            import sys
+            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            from audio_analyzer import AudioAnalyzer
+            result = AudioAnalyzer.find_compatible_samples(args["folder_path"], args["target_key"], mode=args.get("mode", "full"))
         except Exception as e:
             result = {"error": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
