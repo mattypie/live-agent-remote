@@ -20,8 +20,11 @@ Usage in Claude Desktop config (claude_desktop_config.json):
 """
 
 import json
+import os
 import socket
 import sys
+
+REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -476,7 +479,7 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     if name == "analyze_audio_file":
         try:
             import sys
-            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.analyze(args["file_path"])
         except Exception as e:
@@ -486,7 +489,7 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     if name == "detect_pitch":
         try:
             import sys
-            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.detect_pitch(args["file_path"])
         except Exception as e:
@@ -496,7 +499,7 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     if name == "analyze_folder":
         try:
             import sys
-            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.analyze_folder(args["folder_path"], mode=args.get("mode", "full"))
         except Exception as e:
@@ -506,7 +509,7 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     if name == "find_compatible_samples":
         try:
             import sys
-            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.find_compatible_samples(args["folder_path"], args["target_key"], mode=args.get("mode", "full"))
         except Exception as e:
@@ -516,7 +519,7 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     if name == "create_smart_folder":
         try:
             import sys
-            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.create_smart_folder(
                 args["target_key"],

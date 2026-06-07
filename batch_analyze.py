@@ -8,8 +8,12 @@ import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from audio_analyzer import AudioAnalyzer, AnalysisCache
+from config import get_samples_path
 
-BASE = "/Users/mtsh/書類/Ableton Live/NI Samples"
+BASE = get_samples_path()
+if not BASE:
+    print("Error: SAMPLES_PATH not configured. Copy config.example.py to config.local.py and set your path.")
+    sys.exit(1)
 EXTENSIONS = {'.wav', '.aif', '.aiff', '.mp3', '.flac', '.ogg', '.m4a'}
 
 def collect_files(category=None):

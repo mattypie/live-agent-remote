@@ -28,6 +28,9 @@ LiveAgent is a MIDI Remote Script that runs **inside** Ableton Live and opens a 
 
 - 🎵 Create MIDI tracks, clips, and write notes programmatically
 - 🎛️ Load plugins/devices, read and set parameters
+- 🥁 Create Drum Racks and load samples onto pads
+- 🔊 Import audio clips, auto-warp with BPM/key detection
+- 🎯 Pitch detection & Camelot Wheel harmonic matching
 - 🤖 Perfect for AI agent integration (ChatGPT, Claude, custom bots)
 - 📊 Read clip automation and write envelope points
 - 🔌 Works with any language that supports TCP sockets
@@ -35,6 +38,14 @@ LiveAgent is a MIDI Remote Script that runs **inside** Ableton Live and opens a 
 
 ### Installation
 
+**Quick Setup:**
+```bash
+git clone https://github.com/happytown-s/live-agent-remote.git
+cd live-agent-remote
+./setup.sh
+```
+
+**Manual Setup:**
 1. Copy the `LiveAgent` folder into your Ableton MIDI Remote Scripts directory:
 
 **macOS:**

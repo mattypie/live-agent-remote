@@ -560,7 +560,10 @@ class AudioAnalyzer:
         import glob
 
         if base_path is None:
-            base_path = "/Users/mtsh/書類/Ableton Live/NI Samples"
+            from config import get_samples_path
+            base_path = get_samples_path()
+            if not base_path:
+                base_path = "/Users/mtsh/書類/Ableton Live/NI Samples"
 
         if categories is None:
             # Scan all category folders
