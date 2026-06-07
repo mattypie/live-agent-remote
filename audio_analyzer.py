@@ -16,12 +16,87 @@ Usage:
 """
 
 import numpy as np
+import os
+import json
+import hashlib
 
 try:
     import librosa
     HAS_LIBROSA = True
 except ImportError:
     HAS_LIBROSA = False
+
+# Cache directory for analysis results
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".analysis_cache")
+
+
+class AnalysisCache:
+    """Persistent JSON cache for audio analysis results."""
+
+    @staticmethod
+    def _file_hash(file_path):
+        """Generate a cache key from file path + mtime + size."""
+        try:
+            stat = os.stat(file_path)
+            raw = "%s|%s|%s" % (file_path, stat.st_mtime, stat.st_size)
+            return hashlib.md5(raw.encode()).hexdigest()
+        except OSError:
+            return hashlib.md5(file_path.encode()).hexdigest()
+
+    @staticmethod
+    def get(file_path, analysis_type="pitch"):
+        """Get cached result if available and valid."""
+        key = AnalysisCache._file_hash(file_path)
+        cache_file = os.path.join(CACHE_DIR, "%s_%s.json" % (key, analysis_type))
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, "r") as f:
+                    data = json.load(f)
+                # Verify the file hasn't changed
+                if data.get("_src") == os.path.basename(file_path):
+                    return data.get("result")
+            except (json.JSONDecodeError, IOError):
+                pass
+        return None
+
+    @staticmethod
+    def set(file_path, analysis_type, result):
+        """Save analysis result to cache."""
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        key = AnalysisCache._file_hash(file_path)
+        cache_file = os.path.join(CACHE_DIR, "%s_%s.json" % (key, analysis_type))
+        try:
+            with open(cache_file, "w") as f:
+                json.dump({"_src": os.path.basename(file_path), "result": result}, f)
+        except IOError:
+            pass
+
+    @staticmethod
+    def batch_get(file_paths, analysis_type="pitch"):
+        """Get multiple cached results. Returns {path: result} for hits."""
+        hits = {}
+        for fp in file_paths:
+            cached = AnalysisCache.get(fp, analysis_type)
+            if cached is not None:
+                hits[fp] = cached
+        return hits
+
+    @staticmethod
+    def stats():
+        """Return cache statistics."""
+        if not os.path.exists(CACHE_DIR):
+            return {"files": 0, "size_mb": 0}
+        files = [f for f in os.listdir(CACHE_DIR) if f.endswith(".json")]
+        total_size = sum(os.path.getsize(os.path.join(CACHE_DIR, f)) for f in files)
+        return {"files": len(files), "size_mb": round(total_size / 1048576, 2)}
+
+    @staticmethod
+    def clear():
+        """Clear all cached results."""
+        if os.path.exists(CACHE_DIR):
+            for f in os.listdir(CACHE_DIR):
+                if f.endswith(".json"):
+                    os.remove(os.path.join(CACHE_DIR, f))
 
 
 class AudioAnalyzer:
@@ -44,6 +119,11 @@ class AudioAnalyzer:
         """
         if not HAS_LIBROSA:
             return {"error": "librosa not installed. Run: pip install librosa"}
+
+        # Check cache
+        cached = AnalysisCache.get(file_path, "full")
+        if cached is not None:
+            return cached
 
         # Load audio
         y, sr = librosa.load(file_path, sr=sample_rate)
@@ -73,6 +153,10 @@ class AudioAnalyzer:
             "beat_count": len(beat_times),
             "sample_rate": sr,
         }
+
+        # Save to cache
+        AnalysisCache.set(file_path, "full", result)
+        return result
 
     @staticmethod
     def detect_bpm(file_path):
@@ -195,6 +279,11 @@ class AudioAnalyzer:
         if not HAS_LIBROSA:
             return {"error": "librosa not installed"}
 
+        # Check cache
+        cached = AnalysisCache.get(file_path, "pitch")
+        if cached is not None:
+            return cached
+
         y, sr = librosa.load(file_path, sr=22050)
 
         # Use pyin for monophonic pitch detection
@@ -211,7 +300,7 @@ class AudioAnalyzer:
             centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
             avg_centroid = float(np.mean(centroid))
             note_info = AudioAnalyzer._freq_to_note(avg_centroid)
-            return {
+            result = {
                 "pitch": note_info["note"],
                 "frequency": round(avg_centroid, 2),
                 "note_number": note_info["note_number"],
@@ -220,6 +309,8 @@ class AudioAnalyzer:
                 "is_atonal": True,
                 "type": "noise/atonal",
             }
+            AnalysisCache.set(file_path, "pitch", result)
+            return result
 
         # Weighted average pitch (weight by probability)
         valid_probs = voiced_probs[~np.isnan(f0)]
@@ -245,7 +336,7 @@ class AudioAnalyzer:
 
         note_info = AudioAnalyzer._freq_to_note(median_freq)
 
-        return {
+        result = {
             "pitch": dominant_note,
             "frequency": round(median_freq, 2),
             "note_number": note_info["note_number"],
@@ -254,6 +345,8 @@ class AudioAnalyzer:
             "is_atonal": False,
             "type": "tonal",
         }
+        AnalysisCache.set(file_path, "pitch", result)
+        return result
 
     @staticmethod
     def _freq_to_note(freq):
@@ -595,6 +688,11 @@ if __name__ == "__main__":
         key_idx = sys.argv.index("--smart-folder") + 1
         target_key = sys.argv[key_idx] if key_idx < len(sys.argv) else "Fm"
         result = AudioAnalyzer.create_smart_folder(target_key)
+    elif "--cache-stats" in sys.argv:
+        result = AnalysisCache.stats()
+    elif "--cache-clear" in sys.argv:
+        AnalysisCache.clear()
+        result = {"cleared": True}
     elif "--pitch-only" in sys.argv:
         result = AudioAnalyzer.detect_pitch(target)
     elif "--bpm-only" in sys.argv:
