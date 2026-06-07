@@ -152,6 +152,47 @@ External Script / AI Agent
    Ableton Live API (LOM)
 ```
 
+### MCP Server (Claude Desktop / Cursor / etc.)
+
+LiveAgent includes a built-in **MCP (Model Context Protocol) server** that lets AI agents control Ableton directly.
+
+**Setup:**
+
+1. Install dependencies:
+```bash
+cd live-agent-remote
+python3 -m venv .venv
+.venv/bin/pip install "mcp[cli]"
+```
+
+2. Add to your MCP client config:
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "ableton-live": {
+      "command": "/absolute/path/to/live-agent-remote/.venv/bin/python3",
+      "args": ["/absolute/path/to/live-agent-remote/mcp_server.py"]
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "ableton-live": {
+      "command": "/absolute/path/to/live-agent-remote/.venv/bin/python3",
+      "args": ["/absolute/path/to/live-agent-remote/mcp_server.py"]
+    }
+  }
+}
+```
+
+3. Restart your MCP client. All 13 commands are now available as tools!
+
 ---
 
 ## 日本語
