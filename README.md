@@ -142,6 +142,9 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `detect_pitch` | Detect pitch of one-shot sample | `file_path` |
 | `analyze_folder` | Batch analyze folder, sort by pitch | `folder_path`, `mode` |
 | `find_compatible_samples` | Find samples matching target key (Camelot) | `folder_path`, `target_key`, `mode` |
+| `create_smart_folder` | Smart folder of compatible samples in Ableton browser | `target_key`, `categories`, `base_path` |
+| `create_drum_rack` | Create Drum Rack on a MIDI track | `track_index`, `name` |
+| `load_sample_to_pad` | Load sample onto Drum Rack pad | `track_index`, `pad_index`, `file_path`, `drum_rack_index` |
 
 ### Note Format
 

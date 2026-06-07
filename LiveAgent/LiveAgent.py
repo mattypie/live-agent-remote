@@ -180,6 +180,10 @@ class LiveAgent(ControlSurface):
             return self._set_clip_warp(payload)
         if command == "analyze_and_warp":
             return self._analyze_and_warp(payload)
+        if command == "create_drum_rack":
+            return self._create_drum_rack(payload)
+        if command == "load_sample_to_pad":
+            return self._load_sample_to_pad(payload)
 
         raise Exception("Unknown command: %s" % command)
 
@@ -892,3 +896,171 @@ class LiveAgent(ControlSurface):
             result["detected_key"] = detected_key
 
         return result
+
+    # ── Drum Rack Commands ──────────────────────────────────
+
+    def _create_drum_rack(self, payload):
+        """Create a Drum Rack on a MIDI track.
+
+        Creates a new MIDI track and loads an empty Drum Rack device.
+        Returns track index and device info.
+        """
+        track_index = payload.get("track_index", -1)
+        name = payload.get("name", "Drum Rack")
+
+        song = self.song()
+
+        # Create MIDI track
+        if track_index >= 0:
+            song.create_midi_track(track_index)
+            track = song.tracks[track_index]
+        else:
+            idx = len(song.tracks)
+            song.create_midi_track(-1)
+            track = song.tracks[idx]
+            track_index = idx
+
+        track.name = name
+
+        # Load Drum Rack from browser
+        browser = self._safe_attr(song, "browser", None)
+        loaded = False
+
+        if browser:
+            try:
+                instruments = self._safe_attr(browser, "instruments", None)
+                if instruments:
+                    loaded = self._load_from_browser_tree(instruments, "Drum Rack")
+            except Exception:
+                pass
+
+        # Find the loaded device
+        devices = []
+        for i, d in enumerate(track.devices):
+            devices.append({
+                "index": i,
+                "name": str(d.name),
+                "class_name": str(d.class_name) if self._safe_attr(d, "class_name", None) else "",
+            })
+
+        # Find Drum Rack device
+        drum_rack_index = None
+        for d in devices:
+            if "drum" in d["name"].lower() or "drum" in d.get("class_name", "").lower():
+                drum_rack_index = d["index"]
+                break
+
+        return {
+            "track_index": track_index,
+            "track_name": name,
+            "devices": devices,
+            "drum_rack_index": drum_rack_index,
+            "loaded": loaded or drum_rack_index is not None,
+        }
+
+    def _load_sample_to_pad(self, payload):
+        """Load a sample file onto a specific Drum Rack pad.
+
+        Uses browser tree search to find and load the sample into
+        the drum rack pad's chain sampler.
+
+        Args:
+            track_index: Track containing the Drum Rack
+            pad_index: Pad number (0-127, maps to MIDI note)
+            file_path: Absolute path to the sample file
+        """
+        import os
+
+        track_index = int(payload["track_index"])
+        pad_index = int(payload.get("pad_index", payload.get("note", 0)))
+        file_path = payload["file_path"]
+
+        song = self.song()
+        track = song.tracks[track_index]
+
+        # Find Drum Rack device
+        drum_rack = None
+        drum_rack_index = int(payload.get("drum_rack_index", 0))
+        if drum_rack_index < len(track.devices):
+            drum_rack = track.devices[drum_rack_index]
+
+        if drum_rack is None:
+            raise Exception("No Drum Rack found on track %d" % track_index)
+
+        # Method 1: Try drum_pads API
+        drum_pads = self._safe_attr(drum_rack, "drum_pads", None)
+        if drum_pads is not None:
+            try:
+                pad = drum_pads[pad_index]
+                # Activate the pad by creating a note
+                chain = self._safe_attr(pad, "chain", None)
+                if chain is not None:
+                    # Chain exists — try to find its Simpler/Sampler device
+                    chain_devices = self._safe_attr(chain, "devices", [])
+                    for cd in chain_devices:
+                        cn = str(self._safe_attr(cd, "name", ""))
+                        if "simpler" in cn.lower() or "sampler" in cn.lower():
+                            sample = self._safe_attr(cd, "sample", None)
+                            if sample:
+                                fp = self._safe_attr(sample, "file_path", None)
+                                if fp is not None:
+                                    sample.file_path = file_path
+                                    return {
+                                        "track_index": track_index,
+                                        "pad_index": pad_index,
+                                        "file": os.path.basename(file_path),
+                                        "loaded": True,
+                                        "method": "drum_pad_sample",
+                                    }
+            except Exception as e:
+                self._log_exception("drum_pad sample load failed")
+
+        # Method 2: Browser load — find the sample and load it
+        # First ensure pad is activated (has a chain)
+        if drum_pads is not None:
+            try:
+                pad = drum_pads[pad_index]
+                chain = self._safe_attr(pad, "chain", None)
+                if chain is None:
+                    # Create a MIDI clip to activate the pad
+                    for i, cs in enumerate(track.clip_slots):
+                        if not cs.has_clip:
+                            cs.create_clip(1.0)
+                            clip = cs.clip
+                            clip.select_all_notes()
+                            clip.replace_selected_notes([
+                                {"pitch": pad_index, "start_time": 0.0,
+                                 "duration": 1.0, "velocity": 100, "mute": False}
+                            ])
+                            break
+            except Exception:
+                pass
+
+        # Method 3: Browser search and load
+        browser = self._safe_attr(song, "browser", None)
+        if browser:
+            try:
+                # Try to find in browser samples
+                for cat_name in ["samples", "audio", "user_library"]:
+                    cat = self._safe_attr(browser, cat_name, None)
+                    if cat:
+                        loaded = self._load_from_browser_path(cat, file_path)
+                        if loaded:
+                            return {
+                                "track_index": track_index,
+                                "pad_index": pad_index,
+                                "file": os.path.basename(file_path),
+                                "loaded": True,
+                                "method": "browser_load",
+                            }
+            except Exception as e:
+                self._log_exception("browser sample load failed")
+
+        return {
+            "track_index": track_index,
+            "pad_index": pad_index,
+            "file": os.path.basename(file_path),
+            "loaded": False,
+            "error": "Sample loading failed — may require manual browser drag",
+            "drum_pads_available": drum_pads is not None,
+        }

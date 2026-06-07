@@ -196,6 +196,22 @@ class LiveAgentClient:
             payload["warp_mode"] = warp_mode
         return self._send("set_clip_warp", payload)
 
+    # ── Drum Rack Commands ──────────────────────────────────
+
+    def create_drum_rack(self, track_index=-1, name="Drum Rack"):
+        return self._send("create_drum_rack", {
+            "track_index": track_index,
+            "name": name,
+        })
+
+    def load_sample_to_pad(self, track_index, pad_index, file_path, drum_rack_index=0):
+        return self._send("load_sample_to_pad", {
+            "track_index": track_index,
+            "pad_index": pad_index,
+            "file_path": file_path,
+            "drum_rack_index": drum_rack_index,
+        })
+
     # ── lifecycle ──────────────────────────────────────────────
 
     def close(self):

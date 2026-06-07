@@ -439,6 +439,32 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="create_drum_rack",
+            description="Create a new Drum Rack on a MIDI track. Creates the track and loads the Drum Rack instrument from Ableton's browser.",
+            inputSchema={
+                "type": "object",
+                "required": [],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Track index to create at. -1 = end of track list (default)"},
+                    "name": {"type": "string", "description": "Track name (default: 'Drum Rack')"},
+                },
+            },
+        ),
+        Tool(
+            name="load_sample_to_pad",
+            description="Load a sample file onto a specific pad of a Drum Rack. Pad index maps to MIDI note (0-127). Use create_drum_rack first, then load samples.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "pad_index", "file_path"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Track containing the Drum Rack"},
+                    "pad_index": {"type": "integer", "description": "Pad number (0-127, maps to MIDI note)"},
+                    "file_path": {"type": "string", "description": "Absolute path to sample file"},
+                    "drum_rack_index": {"type": "integer", "description": "Device index of Drum Rack (default: 0)", "default": 0},
+                },
+            },
+        ),
     ]
 
 
