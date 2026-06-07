@@ -137,6 +137,11 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `duplicate_clip` | Copy clip to another slot | `track_index`, `slot_index`, `dest_*` |
 | `delete_clip` | Remove clip from slot | `track_index`, `slot_index` |
 | `set_clip_warp` | Set warp on/off and warp mode | `track_index`, `slot_index`, `warping`, `warp_mode` |
+| `analyze_and_warp` | Auto-warp with BPM/key from analyzer | `track_index`, `slot_index`, `bpm`, `key`, `warp_mode` |
+| `analyze_audio_file` | Analyze audio file for BPM, key, beats | `file_path` |
+| `detect_pitch` | Detect pitch of one-shot sample | `file_path` |
+| `analyze_folder` | Batch analyze folder, sort by pitch | `folder_path`, `mode` |
+| `find_compatible_samples` | Find samples matching target key (Camelot) | `folder_path`, `target_key`, `mode` |
 
 ### Note Format
 
@@ -163,6 +168,49 @@ External Script / AI Agent
         │
         ▼
    Ableton Live API (LOM)
+```
+
+### Audio Analyzer
+
+Built-in audio analysis powered by [librosa](https://librosa.org/):
+
+- **BPM Detection** — `librosa.beat.beat_track` for tempo extraction
+- **Key Detection** — Krumhansl-Schmuckler algorithm for all 24 keys
+- **Pitch Detection** — `pyin` monophonic pitch detection for one-shot samples (kicks, snares, etc.)
+- **Camelot Wheel** — Harmonic compatibility matching for DJ-style key mixing
+- **Batch Analysis** — Analyze entire folders, sort by pitch or key
+- **Auto-Warp** — Detect BPM/key and auto-apply warp settings in Ableton
+
+**CLI usage:**
+```bash
+# Analyze a single file
+python audio_analyzer.py kick.wav
+
+# Detect pitch of a one-shot
+python audio_analyzer.py snare.wav --pitch-only
+
+# Analyze all files in a folder (sorted by pitch)
+python audio_analyzer.py ./Kicks/ --folder --mode pitch
+
+# Find samples compatible with Fm (Camelot Wheel)
+python audio_analyzer.py ./Kicks/ --compatible Fm
+```
+
+**Python API:**
+```python
+from audio_analyzer import AudioAnalyzer
+
+# Single file
+result = AudioAnalyzer.analyze("loop.wav")
+# {"bpm": 128.5, "key": "Fm", "beat_count": 32, ...}
+
+# One-shot pitch
+pitch = AudioAnalyzer.detect_pitch("kick.wav")
+# {"pitch": "C1", "frequency": 32.7, "is_atonal": False}
+
+# Find compatible samples
+matches = AudioAnalyzer.find_compatible_samples("./Kicks", "Fm")
+# {"compatible_count": 142, "compatible": [...]}
 ```
 
 ### MCP Server (Claude Desktop / Cursor / etc.)
