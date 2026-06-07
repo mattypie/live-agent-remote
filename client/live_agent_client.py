@@ -151,6 +151,53 @@ class LiveAgentClient:
 
     # ── lifecycle ──────────────────────────────────────────────
 
+    # ── Audio Clip Commands ──────────────────────────────────
+
+    def create_audio_track(self, index=-1):
+        return self._send("create_audio_track", {"index": index})
+
+    def import_audio_clip(self, track_index, slot_index, file_path):
+        return self._send("import_audio_clip", {
+            "track_index": track_index,
+            "slot_index": slot_index,
+            "file_path": file_path,
+        })
+
+    def get_clip_info(self, track_index, slot_index):
+        return self._send("get_clip_info", {
+            "track_index": track_index,
+            "slot_index": slot_index,
+        })
+
+    def set_clip_properties(self, track_index, slot_index, **kwargs):
+        payload = {"track_index": track_index, "slot_index": slot_index}
+        payload.update(kwargs)
+        return self._send("set_clip_properties", payload)
+
+    def duplicate_clip(self, track_index, slot_index, dest_track_index=None, dest_slot_index=None):
+        payload = {"track_index": track_index, "slot_index": slot_index}
+        if dest_track_index is not None:
+            payload["dest_track_index"] = dest_track_index
+        if dest_slot_index is not None:
+            payload["dest_slot_index"] = dest_slot_index
+        return self._send("duplicate_clip", payload)
+
+    def delete_clip(self, track_index, slot_index):
+        return self._send("delete_clip", {
+            "track_index": track_index,
+            "slot_index": slot_index,
+        })
+
+    def set_clip_warp(self, track_index, slot_index, warping=None, warp_mode=None):
+        payload = {"track_index": track_index, "slot_index": slot_index}
+        if warping is not None:
+            payload["warping"] = warping
+        if warp_mode is not None:
+            payload["warp_mode"] = warp_mode
+        return self._send("set_clip_warp", payload)
+
+    # ── lifecycle ──────────────────────────────────────────────
+
     def close(self):
         try:
             self._sock.close()

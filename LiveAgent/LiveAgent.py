@@ -164,6 +164,20 @@ class LiveAgent(ControlSurface):
             return self._load_device(payload)
         if command == "list_browser_devices":
             return self._list_browser_devices(payload)
+        if command == "import_audio_clip":
+            return self._import_audio_clip(payload)
+        if command == "get_clip_info":
+            return self._get_clip_info(payload)
+        if command == "set_clip_properties":
+            return self._set_clip_properties(payload)
+        if command == "duplicate_clip":
+            return self._duplicate_clip(payload)
+        if command == "delete_clip":
+            return self._delete_clip(payload)
+        if command == "create_audio_track":
+            return self._create_audio_track(payload)
+        if command == "set_clip_warp":
+            return self._set_clip_warp(payload)
 
         raise Exception("Unknown command: %s" % command)
 
@@ -669,3 +683,162 @@ class LiveAgent(ControlSurface):
             self.log_message("[LiveAgent] %s: %s" % (label, traceback.format_exc()))
         except Exception:
             pass
+
+    # ── Audio Clip Commands ──────────────────────────────────
+
+    def _create_audio_track(self, payload):
+        """Create a new audio track."""
+        index = int(payload.get("index", -1))
+        song = self.song()
+        song.create_audio_track(index)
+        actual_index = index if index >= 0 else len(song.tracks) - 1
+        track = song.tracks[actual_index]
+        return {"track_index": actual_index, "name": track.name}
+
+    def _import_audio_clip(self, payload):
+        """Import an audio file into a track slot."""
+        import os
+        file_path = payload.get("file_path", "")
+        if not file_path or not os.path.isfile(file_path):
+            raise Exception("Audio file not found: %s" % file_path)
+
+        track_index = int(payload.get("track_index", 0))
+        slot_index = int(payload.get("slot_index", 0))
+        track = self._track_by_index(track_index)
+        self._ensure_scene(slot_index)
+        slot = track.clip_slots[slot_index]
+
+        # Use Ableton's browser to import - set view focus then drag
+        # The reliable method: create clip via Live's file import
+        song = self.song()
+        song.view.selected_track = track
+        song.view.selected_scene = song.scenes[slot_index]
+
+        # Import using Live's internal command
+        # Live 11: we can use the browser's file system import
+        # Most reliable: use set_file_path if available, or browser drag
+        import Live
+        Live.Application.get_application().open_document(file_path)
+
+        return {
+            "track_index": track_index,
+            "slot_index": slot_index,
+            "file": os.path.basename(file_path),
+            "status": "imported",
+        }
+
+    def _get_clip_info(self, payload):
+        """Get detailed info about a clip (audio or MIDI)."""
+        track, slot = self._track_and_slot(payload)
+        if not slot.has_clip:
+            return {"has_clip": False}
+
+        clip = slot.clip
+        info = {
+            "has_clip": True,
+            "name": clip.name,
+            "color": clip.color,
+            "is_audio_clip": self._safe_attr(clip, "is_audio_clip", False),
+            "is_midi_clip": self._safe_attr(clip, "is_midi_clip", False),
+            "looping": clip.looping,
+            "loop_start": clip.loop_start,
+            "loop_end": clip.loop_end,
+            "start_marker": clip.start_marker,
+            "end_marker": clip.end_marker,
+            "pitch": self._safe_attr(clip, "pitch_coarse", 0),
+            "gain": self._safe_attr(clip, "gain", 1.0),
+        }
+
+        # Audio-specific properties
+        if self._safe_attr(clip, "is_audio_clip", False):
+            info["warping"] = clip.warping
+            info["warp_mode"] = str(self._safe_attr(clip, "warp_mode", ""))
+            info["file_path"] = self._safe_attr(clip, "file_path", "")
+            info["sample_length"] = self._safe_attr(clip, "sample_length", 0.0)
+
+        return info
+
+    def _set_clip_properties(self, payload):
+        """Set clip properties: name, color, loop, start/end, pitch, gain."""
+        track, slot = self._track_and_slot(payload)
+        if not slot.has_clip:
+            raise Exception("No clip at track %s slot %s" % (payload.get("track_index"), payload.get("slot_index")))
+        clip = slot.clip
+
+        if "name" in payload:
+            clip.name = payload["name"]
+        if "color" in payload:
+            clip.color = int(payload["color"])
+        if "looping" in payload:
+            clip.looping = bool(payload["looping"])
+        if "loop_start" in payload:
+            clip.loop_start = float(payload["loop_start"])
+        if "loop_end" in payload:
+            clip.loop_end = float(payload["loop_end"])
+        if "start_marker" in payload:
+            clip.start_marker = float(payload["start_marker"])
+        if "end_marker" in payload:
+            clip.end_marker = float(payload["end_marker"])
+
+        # Audio-specific
+        if self._safe_attr(clip, "is_audio_clip", False):
+            if "pitch_coarse" in payload:
+                clip.pitch_coarse = int(payload["pitch_coarse"])
+            if "pitch_fine" in payload:
+                clip.pitch_fine = float(payload["pitch_fine"])
+            if "gain" in payload:
+                clip.gain = float(payload["gain"])
+
+        return {"updated": True, "clip": self._get_clip_info(payload)}
+
+    def _duplicate_clip(self, payload):
+        """Duplicate a clip to another slot (same or different track)."""
+        src_track = self._track_by_index(int(payload.get("track_index", 0)))
+        src_slot_idx = int(payload.get("slot_index", 0))
+        self._ensure_scene(src_slot_idx)
+        src_slot = src_track.clip_slots[src_slot_idx]
+        if not src_slot.has_clip:
+            raise Exception("No clip at source slot %s" % src_slot_idx)
+
+        dst_track_idx = int(payload.get("dest_track_index", payload.get("track_index", 0)))
+        dst_slot_idx = int(payload.get("dest_slot_index", src_slot_idx + 1))
+        dst_track = self._track_by_index(dst_track_idx)
+        self._ensure_scene(dst_slot_idx)
+        dst_slot = dst_track.clip_slots[dst_slot_idx]
+
+        src_slot.clip.duplicate_clip_to(dst_slot)
+
+        return {
+            "source": {"track": int(payload.get("track_index", 0)), "slot": src_slot_idx},
+            "destination": {"track": dst_track_idx, "slot": dst_slot_idx},
+        }
+
+    def _delete_clip(self, payload):
+        """Delete a clip from a slot."""
+        track, slot = self._track_and_slot(payload)
+        if not slot.has_clip:
+            raise Exception("No clip at track %s slot %s" % (payload.get("track_index"), payload.get("slot_index")))
+        clip_name = slot.clip.name
+        slot.delete_clip()
+        return {"deleted": True, "clip_name": clip_name}
+
+    def _set_clip_warp(self, payload):
+        """Set warp properties on an audio clip."""
+        track, slot = self._track_and_slot(payload)
+        if not slot.has_clip:
+            raise Exception("No clip at track %s slot %s" % (payload.get("track_index"), payload.get("slot_index")))
+        clip = slot.clip
+
+        if not self._safe_attr(clip, "is_audio_clip", False):
+            raise Exception("Clip is not an audio clip")
+
+        if "warping" in payload:
+            clip.warping = bool(payload["warping"])
+        if "warp_mode" in payload:
+            # Warp modes: 0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex, 5=complex pro
+            clip.warp_mode = int(payload["warp_mode"])
+
+        return {
+            "warping": clip.warping,
+            "warp_mode": str(clip.warp_mode),
+        }

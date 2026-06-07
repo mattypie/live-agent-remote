@@ -263,6 +263,107 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="create_audio_track",
+            description="Create a new audio track in Ableton Live.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": "Insert position (-1 = end)",
+                        "default": -1,
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="import_audio_clip",
+            description="Import an audio file (wav, aiff, mp3, etc.) into a track slot. The file must exist on disk.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index", "file_path"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index"},
+                    "slot_index": {"type": "integer", "description": "Target slot index"},
+                    "file_path": {"type": "string", "description": "Absolute path to audio file"},
+                },
+            },
+        ),
+        Tool(
+            name="get_clip_info",
+            description="Get detailed info about a clip: name, type (audio/MIDI), loop settings, warp, pitch, gain, file path, etc.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer"},
+                    "slot_index": {"type": "integer"},
+                },
+            },
+        ),
+        Tool(
+            name="set_clip_properties",
+            description="Set clip properties: name, color, loop start/end, start/end markers, pitch, gain.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer"},
+                    "slot_index": {"type": "integer"},
+                    "name": {"type": "string", "description": "Clip name"},
+                    "color": {"type": "integer", "description": "Clip color (RGB int)"},
+                    "looping": {"type": "boolean", "description": "Enable/disable loop"},
+                    "loop_start": {"type": "number", "description": "Loop start in beats"},
+                    "loop_end": {"type": "number", "description": "Loop end in beats"},
+                    "start_marker": {"type": "number", "description": "Start marker in beats"},
+                    "end_marker": {"type": "number", "description": "End marker in beats"},
+                    "pitch_coarse": {"type": "integer", "description": "Pitch transpose (semitones, audio only)"},
+                    "pitch_fine": {"type": "number", "description": "Fine pitch (cents, audio only)"},
+                    "gain": {"type": "number", "description": "Clip gain (audio only)"},
+                },
+            },
+        ),
+        Tool(
+            name="duplicate_clip",
+            description="Duplicate a clip to another slot (same or different track).",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Source track"},
+                    "slot_index": {"type": "integer", "description": "Source slot"},
+                    "dest_track_index": {"type": "integer", "description": "Destination track (default: same)"},
+                    "dest_slot_index": {"type": "integer", "description": "Destination slot (default: source+1)"},
+                },
+            },
+        ),
+        Tool(
+            name="delete_clip",
+            description="Delete a clip from a track slot.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer"},
+                    "slot_index": {"type": "integer"},
+                },
+            },
+        ),
+        Tool(
+            name="set_clip_warp",
+            description="Set warp properties on an audio clip. Warp modes: 0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex, 5=complex pro.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer"},
+                    "slot_index": {"type": "integer"},
+                    "warping": {"type": "boolean", "description": "Enable/disable warp"},
+                    "warp_mode": {"type": "integer", "description": "0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex, 5=complex pro"},
+                },
+            },
+        ),
     ]
 
 

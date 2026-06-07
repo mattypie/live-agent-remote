@@ -130,6 +130,13 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `write_clip_automation` | Write automation envelope | `track_index`, `slot_index`, `device_*`, `parameter_*`, `points[]` |
 | `load_device` | Load a plugin onto a track | `track_index`, `device_name`, `browser_type` |
 | `list_browser_devices` | Search/list available plugins | `browser_type`, `query`, `max_results` |
+| `create_audio_track` | Create a new audio track | `index` |
+| `import_audio_clip` | Import audio file to track slot | `track_index`, `slot_index`, `file_path` |
+| `get_clip_info` | Get clip details (name, type, loop, warp) | `track_index`, `slot_index` |
+| `set_clip_properties` | Set clip name, color, loop, pitch, gain | `track_index`, `slot_index`, `name`, `color`, etc. |
+| `duplicate_clip` | Copy clip to another slot | `track_index`, `slot_index`, `dest_*` |
+| `delete_clip` | Remove clip from slot | `track_index`, `slot_index` |
+| `set_clip_warp` | Set warp on/off and warp mode | `track_index`, `slot_index`, `warping`, `warp_mode` |
 
 ### Note Format
 
