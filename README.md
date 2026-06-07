@@ -6,6 +6,12 @@
 
 Control tracks, clips, MIDI notes, devices, and automation from any external script or AI agent via a simple JSON socket protocol.
 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+![Python](https://img.shields.io/badge/Python-3.10+-green.svg)
+![Ableton Live](https://img.shields.io/badge/Ableton%20Live-11%20%7C%2012-orange.svg)
+![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-purple.svg)
+![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey.svg)
+
 [English](#english) | [日本語](#日本語) | [中文](#中文) | [한국어](#한국어) | [Español](#español) | [Français](#français)
 
 </div>
