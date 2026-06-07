@@ -448,6 +448,125 @@ class AudioAnalyzer:
             "others": incompatible,
         }
 
+    @staticmethod
+    def create_smart_folder(target_key, categories=None, base_path=None):
+        """Create a smart folder with symlinks to harmonically compatible samples.
+
+        Generates symlinks under NI Samples/_smart/<Key Name>/ so that
+        Ableton's browser can directly show compatible samples.
+
+        Args:
+            target_key: Target key (e.g. 'Fm', 'C')
+            categories: List of sample categories to scan (default: all)
+            base_path: Base NI Samples path (default: ~/書類/Ableton Live/NI Samples)
+
+        Returns:
+            dict with folder path and file count
+        """
+        import os
+        import glob
+
+        if base_path is None:
+            base_path = "/Users/mtsh/書類/Ableton Live/NI Samples"
+
+        if categories is None:
+            # Scan all category folders
+            categories = [
+                d for d in os.listdir(base_path)
+                if os.path.isdir(os.path.join(base_path, d)) and d != "_smart"
+            ]
+
+        # Create smart folder
+        safe_key = target_key.replace("#", "s").replace("/", "-")
+        smart_dir = os.path.join(base_path, "_smart", safe_key)
+
+        # Clean existing smart folder
+        if os.path.exists(smart_dir):
+            for f in os.listdir(smart_dir):
+                fp = os.path.join(smart_dir, f)
+                if os.path.islink(fp):
+                    os.remove(fp)
+
+        os.makedirs(smart_dir, exist_ok=True)
+
+        total_linked = 0
+        errors = []
+
+        for cat in categories:
+            cat_path = os.path.join(base_path, cat)
+            if not os.path.isdir(cat_path):
+                continue
+
+            # Find all audio files (follow symlinks to real files)
+            extensions = {".wav", ".aif", ".aiff", ".mp3", ".flac", ".ogg", ".m4a"}
+            audio_files = []
+
+            for root, dirs, files in os.walk(cat_path):
+                for f in files:
+                    ext = os.path.splitext(f)[1].lower()
+                    if ext in extensions:
+                        audio_files.append(os.path.join(root, f))
+
+            if not audio_files:
+                continue
+
+            # Analyze each file for pitch
+            for file_path in audio_files:
+                try:
+                    pitch_result = AudioAnalyzer.detect_pitch(file_path)
+                    if "error" in pitch_result:
+                        continue
+
+                    sample_pitch = pitch_result.get("pitch", "")
+                    is_atonal = pitch_result.get("is_atonal", True)
+
+                    if is_atonal:
+                        # Atonal samples are always compatible (hi-hats, noise snares)
+                        # Include them in a subfolder
+                        sub_dir = os.path.join(smart_dir, cat, "_atonal")
+                        os.makedirs(sub_dir, exist_ok=True)
+                    else:
+                        # Check compatibility
+                        if sample_pitch and len(sample_pitch) > 1:
+                            root_note = sample_pitch[:-1]  # "F2" -> "F"
+                            sample_key = root_note + "m"
+                            is_compat = AudioAnalyzer.is_harmonically_compatible(target_key, sample_key)
+
+                            if not is_compat:
+                                # Also check major
+                                sample_key_major = root_note
+                                is_compat = AudioAnalyzer.is_harmonically_compatible(target_key, sample_key_major)
+
+                            if not is_compat:
+                                continue
+
+                        sub_dir = os.path.join(smart_dir, cat)
+                        os.makedirs(sub_dir, exist_ok=True)
+
+                    # Create symlink
+                    basename = os.path.basename(file_path)
+                    link_path = os.path.join(sub_dir, basename)
+
+                    # Handle duplicate names
+                    if os.path.exists(link_path):
+                        name, ext = os.path.splitext(basename)
+                        link_path = os.path.join(sub_dir, "%s_2%s" % (name, ext))
+
+                    os.symlink(file_path, link_path)
+                    total_linked += 1
+
+                except Exception as e:
+                    errors.append({"file": file_path, "error": str(e)})
+
+        return {
+            "target_key": target_key,
+            "camelot": AudioAnalyzer.get_camelot(target_key),
+            "smart_folder": smart_dir,
+            "total_files": total_linked,
+            "categories_scanned": len(categories),
+            "errors_count": len(errors),
+        }
+
 
 if __name__ == "__main__":
     import sys
@@ -472,6 +591,10 @@ if __name__ == "__main__":
         key_idx = sys.argv.index("--compatible") + 1
         target_key = sys.argv[key_idx] if key_idx < len(sys.argv) else "Am"
         result = AudioAnalyzer.find_compatible_samples(target, target_key)
+    elif "--smart-folder" in sys.argv:
+        key_idx = sys.argv.index("--smart-folder") + 1
+        target_key = sys.argv[key_idx] if key_idx < len(sys.argv) else "Fm"
+        result = AudioAnalyzer.create_smart_folder(target_key)
     elif "--pitch-only" in sys.argv:
         result = AudioAnalyzer.detect_pitch(target)
     elif "--bpm-only" in sys.argv:

@@ -426,6 +426,19 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="create_smart_folder",
+            description="Create a smart folder in Ableton's browser with symlinks to samples that are harmonically compatible with a target key. The folder appears under User Library > Samples > NI Samples > _smart > [Key]. Use this so compatible samples show up directly in Ableton's browser.",
+            inputSchema={
+                "type": "object",
+                "required": ["target_key"],
+                "properties": {
+                    "target_key": {"type": "string", "description": "Target key (e.g. 'Fm', 'C', 'Am')"},
+                    "categories": {"type": "array", "items": {"type": "string"}, "description": "Sample categories to scan (e.g. ['Kick', 'Snare']). Default: all"},
+                    "base_path": {"type": "string", "description": "Base NI Samples path. Default: auto-detected"},
+                },
+            },
+        ),
     ]
 
 
@@ -470,6 +483,20 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
             sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.find_compatible_samples(args["folder_path"], args["target_key"], mode=args.get("mode", "full"))
+        except Exception as e:
+            result = {"error": str(e)}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+    if name == "create_smart_folder":
+        try:
+            import sys
+            sys.path.insert(0, "/Users/mtsh/Desktop/live-agent-remote")
+            from audio_analyzer import AudioAnalyzer
+            result = AudioAnalyzer.create_smart_folder(
+                args["target_key"],
+                categories=args.get("categories"),
+                base_path=args.get("base_path"),
+            )
         except Exception as e:
             result = {"error": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
