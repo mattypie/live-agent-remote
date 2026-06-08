@@ -191,8 +191,10 @@ Built-in audio analysis powered by [librosa](https://librosa.org/):
 - **BPM Detection** — `librosa.beat.beat_track` for tempo extraction
 - **Key Detection** — Krumhansl-Schmuckler algorithm for all 24 keys
 - **Pitch Detection** — `pyin` monophonic pitch detection for one-shot samples (kicks, snares, etc.)
+- **Sample Type Classification** — Auto-classify by duration: One-Shot (<2s), Short Loop (2-5s), Medium Loop (5-15s), Long Loop (>15s)
 - **Camelot Wheel** — Harmonic compatibility matching for DJ-style key mixing
-- **Batch Analysis** — Analyze entire folders, sort by pitch or key
+- **Batch Analysis** — Analyze entire folders, sort by pitch or key, filter by sample type
+- **Smart Folders** — Auto-generate symlinks of compatible samples visible in Ableton's browser
 - **Auto-Warp** — Detect BPM/key and auto-apply warp settings in Ableton
 
 **CLI usage:**
@@ -218,9 +220,13 @@ from audio_analyzer import AudioAnalyzer
 result = AudioAnalyzer.analyze("loop.wav")
 # {"bpm": 128.5, "key": "Fm", "beat_count": 32, ...}
 
-# One-shot pitch
+# One-shot pitch (includes duration + sample type)
 pitch = AudioAnalyzer.detect_pitch("kick.wav")
-# {"pitch": "C1", "frequency": 32.7, "is_atonal": False}
+# {"pitch": "C1", "frequency": 32.7, "is_atonal": False, "duration_seconds": 0.45, "sample_type": "oneshot", "sample_type_label": "One-Shot"}
+
+# Filter folder by sample type (only one-shots)
+results = AudioAnalyzer.analyze_folder("./Kicks", mode="pitch")
+oneshots = [r for r in results if r.get("sample_type") == "oneshot"]
 
 # Find compatible samples
 matches = AudioAnalyzer.find_compatible_samples("./Kicks", "Fm")
@@ -367,8 +373,10 @@ client.close()
 - **BPM検出** — `librosa.beat.beat_track`でテンポ抽出
 - **キー検出** — Krumhansl-Schmucklerアルゴリズムで全24調を判定
 - **ピッチ検出** — `pyin`でワンショット（キック・スネア等）の基本音高を検出
+- **サンプル分類** — 長さで自動分類: One-Shot（2秒未満）, Short Loop（2〜5秒）, Medium Loop（5〜15秒）, Long Loop（15秒超）
 - **Camelot Wheel** — DJスタイルのキーマッチング
-- **一括解析** — フォルダ全体を解析、ピッチ順でソート
+- **一括解析** — フォルダ全体を解析、ピッチ順でソート、サンプルタイプでフィルタ可能
+- **スマートフォルダ** — 互換サンプルのシンボリックリンクを自動生成、Abletonブラウザから直接閲覧可能
 - **自動ワープ** — BPM/キー検出→Abletonにワープ自動適用
 
 **CLI使用例:**
@@ -484,8 +492,10 @@ client.close()
 - **BPM检测** — `librosa.beat.beat_track` 节拍提取
 - **调性检测** — Krumhansl-Schmuckler算法，支持全部24个调
 - **音高检测** — `pyin` 单音检测，适用于Kick/Snare等单次采样
+- **采样分类** — 按时长自动分类: One-Shot（<2秒）、Short Loop（2-5秒）、Medium Loop（5-15秒）、Long Loop（>15秒）
 - **Camelot Wheel** — DJ风格的调性兼容匹配
-- **批量分析** — 分析整个文件夹，按音高排序
+- **批量分析** — 分析整个文件夹，按音高排序，可按采样类型筛选
+- **智能文件夹** — 自动生成兼容采样的符号链接，可在Ableton浏览器中直接查看
 - **自动Warp** — 检测BPM/调性后自动应用Warp设置
 
 **CLI使用：**
@@ -601,8 +611,10 @@ client.close()
 - **BPM 감지** — `librosa.beat.beat_track` 템포 추출
 - **키 감지** — Krumhansl-Schmuckler 알고리즘으로 24개 키 판정
 - **피치 감지** — `pyin`으로 원샷 (킥, 스네어 등)의 기본 음높이 감지
+- **샘플 분류** — 길이별 자동 분류: One-Shot (<2초), Short Loop (2-5초), Medium Loop (5-15초), Long Loop (>15초)
 - **Camelot Wheel** — DJ 스타일 키 매칭
-- **일괄 분석** — 폴더 전체 분석, 피치순 정렬
+- **일괄 분석** — 폴더 전체 분석, 피치순 정렬, 샘플 타입 필터 가능
+- **스마트 폴더** — 호환 샘플의 심볼릭 링크 자동 생성, Ableton 브라우저에서 직접 탐색 가능
 - **자동 워프** — BPM/키 감지 후 Ableton에 워프 자동 적용
 
 ### MCP 서버 (Claude Desktop / Cursor 등)
@@ -688,8 +700,10 @@ Análisis de audio integrado con [librosa](https://librosa.org/):
 - **Detección de BPM** — Extracción de tempo
 - **Detección de tonalidad** — Algoritmo Krumhansl-Schmuckler, 24 tonalidades
 - **Detección de pitch** — Para muestras one-shot (kicks, snares)
+- **Clasificación de muestras** — Clasificación automática por duración: One-Shot (<2s), Short Loop (2-5s), Medium Loop (5-15s), Long Loop (>15s)
 - **Camelot Wheel** — Coincidencia armónica estilo DJ
-- **Análisis por lotes** — Analizar carpetas enteras, ordenar por pitch
+- **Análisis por lotes** — Analizar carpetas enteras, ordenar por pitch, filtrar por tipo de muestra
+- **Carpetas inteligentes** — Generación automática de symlinks de muestras compatibles, visibles en el navegador de Ableton
 - **Auto-Warp** — Detectar BPM/tonalidad y aplicar Warp automáticamente
 
 ### Servidor MCP (Claude Desktop / Cursor etc.)
@@ -775,8 +789,10 @@ Analyse audio intégrée avec [librosa](https://librosa.org/) :
 - **Détection BPM** — Extraction du tempo
 - **Détection de tonalité** — Algorithme Krumhansl-Schmuckler, 24 tonalités
 - **Détection de pitch** — Pour les samples one-shot (kicks, snares)
+- **Classification des samples** — Classification automatique par durée : One-Shot (<2s), Short Loop (2-5s), Medium Loop (5-15s), Long Loop (>15s)
 - **Camelot Wheel** — Correspondance harmonique style DJ
-- **Analyse par lot** — Analyser des dossiers entiers, trier par pitch
+- **Analyse par lot** — Analyser des dossiers entiers, trier par pitch, filtrer par type de sample
+- **Dossiers intelligents** — Génération automatique de symlinks de samples compatibles, visibles dans le navigateur Ableton
 - **Auto-Warp** — Détecter BPM/tonalité et appliquer le Warp automatiquement
 
 ### Serveur MCP (Claude Desktop / Cursor etc.)
