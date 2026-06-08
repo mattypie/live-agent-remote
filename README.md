@@ -272,7 +272,7 @@ python3 -m venv .venv
 }
 ```
 
-3. Restart your MCP client. All 13 commands are now available as tools!
+3. Restart your MCP client. All 28 commands are now available as tools!
 
 ---
 
@@ -414,7 +414,7 @@ python3 -m venv .venv
 }
 ```
 
-3. MCPクライアントを再起動。全26コマンドがツールとして利用可能！
+3. MCPクライアントを再起動。全28コマンドがツールとして利用可能！
 
 ---
 
@@ -533,7 +533,7 @@ python3 -m venv .venv
 }
 ```
 
-3. 重启MCP客户端，全部26个命令即可作为工具使用！
+3. 重启MCP客户端，全部28个命令即可作为工具使用！
 
 ---
 
@@ -629,7 +629,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-**Claude Desktop** 설정에 추가 후 재시작하면 26개 명령을 도구로 사용할 수 있습니다!
+**Claude Desktop** 설정에 추가 후 재시작하면 28개 명령을 도구로 사용할 수 있습니다!
 
 ---
 
@@ -718,7 +718,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 26 comandos como herramientas!
+¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 28 comandos como herramientas!
 
 ---
 
@@ -807,7 +807,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 26 commandes comme outils !
+Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 28 commandes comme outils !
 
 ---
 
