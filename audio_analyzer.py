@@ -282,9 +282,25 @@ class AudioAnalyzer:
         # Check cache
         cached = AnalysisCache.get(file_path, "pitch")
         if cached is not None:
+            # If cache was built before sample_type was added, backfill it
+            if "sample_type" not in cached:
+                try:
+                    import soundfile as sf
+                    info = sf.info(file_path)
+                    dur = info.duration
+                    st = AudioAnalyzer._classify_sample(dur)
+                    cached["duration_seconds"] = round(dur, 3)
+                    cached["sample_type"] = st["type"]
+                    cached["sample_type_label"] = st["label"]
+                    AnalysisCache.set(file_path, "pitch", cached)
+                except Exception:
+                    cached["duration_seconds"] = 0
+                    cached["sample_type"] = "unknown"
+                    cached["sample_type_label"] = "Unknown"
             return cached
 
         y, sr = librosa.load(file_path, sr=22050)
+        duration = float(len(y) / sr)
 
         # Use pyin for monophonic pitch detection
         f0, voiced_flags, voiced_probs = librosa.pyin(
@@ -300,6 +316,7 @@ class AudioAnalyzer:
             centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
             avg_centroid = float(np.mean(centroid))
             note_info = AudioAnalyzer._freq_to_note(avg_centroid)
+            sample_type = AudioAnalyzer._classify_sample(duration)
             result = {
                 "pitch": note_info["note"],
                 "frequency": round(avg_centroid, 2),
@@ -308,6 +325,9 @@ class AudioAnalyzer:
                 "confidence": 0.0,
                 "is_atonal": True,
                 "type": "noise/atonal",
+                "duration_seconds": round(duration, 3),
+                "sample_type": sample_type["type"],
+                "sample_type_label": sample_type["label"],
             }
             AnalysisCache.set(file_path, "pitch", result)
             return result
@@ -336,6 +356,7 @@ class AudioAnalyzer:
 
         note_info = AudioAnalyzer._freq_to_note(median_freq)
 
+        sample_type = AudioAnalyzer._classify_sample(duration)
         result = {
             "pitch": dominant_note,
             "frequency": round(median_freq, 2),
@@ -344,9 +365,39 @@ class AudioAnalyzer:
             "confidence": round(confidence, 3),
             "is_atonal": False,
             "type": "tonal",
+            "duration_seconds": round(duration, 3),
+            "sample_type": sample_type["type"],
+            "sample_type_label": sample_type["label"],
         }
         AnalysisCache.set(file_path, "pitch", result)
         return result
+
+    # ── Sample Length Classification ────────────────────────
+
+    # Thresholds (seconds)
+    ONE_SHOT_MAX = 2.0      # < 2s → one-shot
+    SHORT_LOOP_MAX = 5.0    # 2-5s → short loop
+    MEDIUM_LOOP_MAX = 15.0  # 5-15s → medium loop
+    # > 15s → long loop / full phrase
+
+    @staticmethod
+    def _classify_sample(duration):
+        """Classify a sample by duration into one-shot / loop categories.
+
+        Returns dict with:
+            type: 'oneshot', 'short_loop', 'medium_loop', 'long_loop'
+            label: human-readable label
+        """
+        if duration < AudioAnalyzer.ONE_SHOT_MAX:
+            return {"type": "oneshot", "label": "One-Shot"}
+        elif duration < AudioAnalyzer.SHORT_LOOP_MAX:
+            return {"type": "short_loop", "label": "Short Loop"}
+        elif duration < AudioAnalyzer.MEDIUM_LOOP_MAX:
+            return {"type": "medium_loop", "label": "Medium Loop"}
+        else:
+            return {"type": "long_loop", "label": "Long Loop"}
+
+    # ── Frequency ↔ Note Conversion ────────────────────────
 
     @staticmethod
     def _freq_to_note(freq):
@@ -478,11 +529,14 @@ class AudioAnalyzer:
                     r["file"] = item
                 else:
                     r = AudioAnalyzer.analyze(file_path)
-                    # Also add pitch for one-shots
+                    # Also add pitch + sample type for one-shots
                     pitch = AudioAnalyzer.detect_pitch(file_path)
                     r["pitch"] = pitch.get("pitch", "?")
                     r["note_number"] = pitch.get("note_number", 0)
                     r["is_atonal"] = pitch.get("is_atonal", False)
+                    r["duration_seconds"] = pitch.get("duration_seconds", r.get("duration_seconds", 0))
+                    r["sample_type"] = pitch.get("sample_type", "unknown")
+                    r["sample_type_label"] = pitch.get("sample_type_label", "Unknown")
                     r["camelot"] = AudioAnalyzer.get_camelot(r.get("key", ""))
                     r["file"] = item
 

@@ -395,7 +395,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="detect_pitch",
-            description="Detect the fundamental pitch of a one-shot audio sample (kick, snare, etc). Returns note name, frequency, octave, and whether the sample is tonal or atonal.",
+            description="Detect the fundamental pitch of a one-shot audio sample (kick, snare, etc). Returns note name, frequency, octave, duration, sample type classification (oneshot/short_loop/medium_loop/long_loop), and whether the sample is tonal or atonal.",
             inputSchema={
                 "type": "object",
                 "required": ["file_path"],
@@ -406,13 +406,14 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="analyze_folder",
-            description="Analyze all audio files in a folder for BPM, key, and pitch. Returns results sorted by pitch (note number). Use mode='pitch' for quick one-shot sorting.",
+            description="Analyze all audio files in a folder for BPM, key, pitch, and sample type (oneshot/loop classification by duration). Returns results sorted by pitch (note number). Use mode='pitch' for quick one-shot sorting. Filter by sample_type to find only one-shots or only loops.",
             inputSchema={
                 "type": "object",
                 "required": ["folder_path"],
                 "properties": {
                     "folder_path": {"type": "string", "description": "Absolute path to folder"},
                     "mode": {"type": "string", "description": "Analysis mode: 'full' (BPM+key+pitch), 'pitch', 'key', 'bpm'", "default": "full"},
+                    "sample_type": {"type": "string", "description": "Filter by sample type: 'oneshot', 'short_loop', 'medium_loop', 'long_loop'. Omit for all.", "enum": ["oneshot", "short_loop", "medium_loop", "long_loop"]},
                 },
             },
         ),
@@ -502,6 +503,10 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
             sys.path.insert(0, REPO_DIR)
             from audio_analyzer import AudioAnalyzer
             result = AudioAnalyzer.analyze_folder(args["folder_path"], mode=args.get("mode", "full"))
+            # Apply sample_type filter if specified
+            sample_type_filter = args.get("sample_type")
+            if sample_type_filter:
+                result = [r for r in result if r.get("sample_type") == sample_type_filter]
         except Exception as e:
             result = {"error": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
