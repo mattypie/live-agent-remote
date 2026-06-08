@@ -142,7 +142,7 @@ class AudioAnalyzer:
         # Key detection
         key_result = AudioAnalyzer._detect_key(y, sr)
 
-        return {
+        result = {
             "file": file_path,
             "bpm": round(tempo, 2),
             "key": key_result["key"],
