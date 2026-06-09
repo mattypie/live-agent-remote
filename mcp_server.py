@@ -82,14 +82,17 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="ping",
             description="Check if Ableton Live is connected and responding via LiveAgent.",
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="get_live_state",
             description="Get the full state of Ableton Live: tempo, tracks, scenes, playing status, selected track.",
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="list_tracks",
             description="List all tracks in the current Ableton Live set with their devices, clips, and settings.",
+            inputSchema={"type": "object", "properties": {}},
         ),
         Tool(
             name="create_midi_track",
@@ -466,6 +469,46 @@ async def list_tools() -> list[Tool]:
                     "pad_index": {"type": "integer", "description": "Pad number (0-127, maps to MIDI note)"},
                     "file_path": {"type": "string", "description": "Absolute path to sample file"},
                     "drum_rack_index": {"type": "integer", "description": "Device index of Drum Rack (default: 0)", "default": 0},
+                },
+            },
+        ),
+        Tool(
+            name="inspect_drum_rack",
+            description="Inspect a Drum Rack's pad structure. Returns pad names, active state, chain devices, and sample file paths for debugging.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Track containing the Drum Rack"},
+                    "drum_rack_index": {"type": "integer", "description": "Device index of Drum Rack (default: 0)", "default": 0},
+                    "pad_range": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Pad range to inspect [start, end] (default: [0, 16])",
+                        "default": [0, 16],
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="eval",
+            description="Evaluate a Python expression in LiveAgent's Ableton Live context. Returns the result. Available variables: Live, song, app, os, json. Use for read-only queries. Local use only — security risk if exposed.",
+            inputSchema={
+                "type": "object",
+                "required": ["expr"],
+                "properties": {
+                    "expr": {"type": "string", "description": "Python expression to evaluate"},
+                },
+            },
+        ),
+        Tool(
+            name="exec",
+            description="Execute a Python statement in LiveAgent's Ableton Live context. Available variables: Live, song, app, os, json. Use for mutations. Local use only — security risk if exposed.",
+            inputSchema={
+                "type": "object",
+                "required": ["stmt"],
+                "properties": {
+                    "stmt": {"type": "string", "description": "Python statement to execute"},
                 },
             },
         ),
