@@ -156,6 +156,9 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `create_smart_folder` | Smart folder of compatible samples in Ableton browser | `target_key`, `categories`, `base_path` |
 | `create_drum_rack` | Create Drum Rack on a MIDI track | `track_index`, `name` |
 | `load_sample_to_pad` | Load sample onto Drum Rack pad | `track_index`, `pad_index`, `file_path`, `drum_rack_index` |
+| `inspect_drum_rack` | Inspect Drum Rack pad structure (debug) | `track_index`, `drum_rack_index`, `pad_range` |
+| `eval` | Evaluate Python expression in Live context | `expr` |
+| `exec` | Execute Python statement in Live context | `stmt` |
 
 ### Note Format
 
@@ -272,7 +275,7 @@ python3 -m venv .venv
 }
 ```
 
-3. Restart your MCP client. All 28 commands are now available as tools!
+3. Restart your MCP client. All 31 commands are now available as tools!
 
 ---
 
@@ -365,6 +368,12 @@ client.close()
 | `detect_pitch` | ワンショットサンプルのピッチ検出 |
 | `analyze_folder` | フォルダ一括解析（ピッチ順ソート） |
 | `find_compatible_samples` | Camelot Wheelでキー互換サンプル検索 |
+| `create_smart_folder` | Abletonブラウザに互換サンプルのスマートフォルダ作成 |
+| `create_drum_rack` | MIDIトラックにDrum Rack作成 |
+| `load_sample_to_pad` | Drum Rackパッドにサンプルをロード |
+| `inspect_drum_rack` | Drum Rackパッド構造の検査（デバッグ用） |
+| `eval` | LiveコンテキストでPython式を評価 |
+| `exec` | LiveコンテキストでPython文を実行 |
 
 ### オーディオ解析
 
@@ -414,7 +423,7 @@ python3 -m venv .venv
 }
 ```
 
-3. MCPクライアントを再起動。全28コマンドがツールとして利用可能！
+3. MCPクライアントを再起動。全31コマンドがツールとして利用可能！
 
 ---
 
@@ -484,6 +493,12 @@ client.close()
 | `detect_pitch` | 检测单次采样（Kick/Snare等）的音高 |
 | `analyze_folder` | 批量分析文件夹，按音高排序 |
 | `find_compatible_samples` | 使用Camelot Wheel搜索调性兼容的采样 |
+| `create_smart_folder` | 在Ableton浏览器中创建兼容采样的智能文件夹 |
+| `create_drum_rack` | 在MIDI轨道上创建Drum Rack |
+| `load_sample_to_pad` | 将采样加载到Drum Rack打击垫 |
+| `inspect_drum_rack` | 检查Drum Rack打击垫结构（调试用） |
+| `eval` | 在Live上下文中评估Python表达式 |
+| `exec` | 在Live上下文中执行Python语句 |
 
 ### 音频分析
 
@@ -533,7 +548,7 @@ python3 -m venv .venv
 }
 ```
 
-3. 重启MCP客户端，全部28个命令即可作为工具使用！
+3. 重启MCP客户端，全部31个命令即可作为工具使用！
 
 ---
 
@@ -603,6 +618,12 @@ client.close()
 | `detect_pitch` | 원샷 샘플의 피치 감지 |
 | `analyze_folder` | 폴더 일괄 분석 (피치순 정렬) |
 | `find_compatible_samples` | Camelot Wheel로 키 호환 샘플 검색 |
+| `create_smart_folder` | Ableton 브라우저에 호환 샘플 스마트 폴더 생성 |
+| `create_drum_rack` | MIDI 트랙에 Drum Rack 생성 |
+| `load_sample_to_pad` | Drum Rack 패드에 샘플 로드 |
+| `inspect_drum_rack` | Drum Rack 패드 구조 검사 (디버그용) |
+| `eval` | Live 컨텍스트에서 Python 표현식 평가 |
+| `exec` | Live 컨텍스트에서 Python 문 실행 |
 
 ### 오디오 분석
 
@@ -629,7 +650,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-**Claude Desktop** 설정에 추가 후 재시작하면 28개 명령을 도구로 사용할 수 있습니다!
+**Claude Desktop** 설정에 추가 후 재시작하면 31개 명령을 도구로 사용할 수 있습니다!
 
 ---
 
@@ -692,6 +713,12 @@ client.close()
 | `detect_pitch` | Detectar pitch de muestra one-shot |
 | `analyze_folder` | Análisis por lotes, ordenar por pitch |
 | `find_compatible_samples` | Buscar muestras compatibles (Camelot Wheel) |
+| `create_smart_folder` | Carpeta inteligente de muestras compatibles en el navegador de Ableton |
+| `create_drum_rack` | Crear Drum Rack en pista MIDI |
+| `load_sample_to_pad` | Cargar sample en pad de Drum Rack |
+| `inspect_drum_rack` | Inspeccionar estructura de pads del Drum Rack (depuración) |
+| `eval` | Evaluar expresión Python en contexto de Live |
+| `exec` | Ejecutar sentencia Python en contexto de Live |
 
 ### Analizador de Audio
 
@@ -718,7 +745,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 28 comandos como herramientas!
+¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 31 comandos como herramientas!
 
 ---
 
@@ -781,6 +808,12 @@ client.close()
 | `detect_pitch` | Détecter le pitch d'un sample one-shot |
 | `analyze_folder` | Analyse par lot, trier par pitch |
 | `find_compatible_samples` | Rechercher des samples compatibles (Camelot Wheel) |
+| `create_smart_folder` | Dossier intelligent de samples compatibles dans le navigateur Ableton |
+| `create_drum_rack` | Créer un Drum Rack sur une piste MIDI |
+| `load_sample_to_pad` | Charger un sample sur un pad du Drum Rack |
+| `inspect_drum_rack` | Inspecter la structure des pads du Drum Rack (débogage) |
+| `eval` | Évaluer une expression Python dans le contexte Live |
+| `exec` | Exécuter une instruction Python dans le contexte Live |
 
 ### Analyseur Audio
 
@@ -807,7 +840,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 28 commandes comme outils !
+Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 31 commandes comme outils !
 
 ---
 
