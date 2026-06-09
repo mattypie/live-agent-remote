@@ -1,6 +1,7 @@
 from __future__ import absolute_import, print_function
 
 import json
+import os
 import socket
 import threading
 import time
@@ -185,7 +186,71 @@ class LiveAgent(ControlSurface):
         if command == "load_sample_to_pad":
             return self._load_sample_to_pad(payload)
 
+        if command == "inspect_drum_rack":
+            return self._inspect_drum_rack(payload)
+
+        if command == "eval":
+            return self._eval(payload)
+        if command == "exec":
+            return self._exec(payload)
+
         raise Exception("Unknown command: %s" % command)
+
+    def _exec(self, payload):
+        """Execute Python statement in LiveAgent context."""
+        stmt = payload.get("stmt", "")
+        try:
+            import Live
+            ns = {
+                "Live": Live,
+                "song": self.song(),
+                "app": Live.Application.get_application(),
+                "os": __import__("os"),
+                "json": __import__("json"),
+            }
+            exec(stmt, ns)
+            return {"result": "ok"}
+        except Exception as e:
+            return {"error": str(e), "type": type(e).__name__}
+
+    def _eval(self, payload):
+        """Evaluate Python expression in LiveAgent context."""
+        expr = payload.get("expr", "")
+        try:
+            import Live
+            result = eval(expr, {"__builtins__": {}}, {
+                "Live": Live,
+                "song": self.song(),
+                "app": Live.Application.get_application(),
+                "os": __import__("os"),
+                "json": __import__("json"),
+                "len": len,
+                "str": str,
+                "int": int,
+                "float": float,
+                "list": list,
+                "dict": dict,
+                "range": range,
+                "enumerate": enumerate,
+                "type": type,
+                "dir": dir,
+                "getattr": getattr,
+                "hasattr": hasattr,
+                "repr": repr,
+                "isinstance": isinstance,
+                "True": True,
+                "False": False,
+                "None": None,
+            })
+            # Try to serialize
+            if isinstance(result, (str, int, float, bool, type(None))):
+                return {"result": result}
+            elif isinstance(result, (list, dict, tuple)):
+                return {"result": result}
+            else:
+                return {"result": repr(result)}
+        except Exception as e:
+            return {"error": str(e), "type": type(e).__name__}
 
     def _live_state(self):
         song = self.song()
@@ -902,8 +967,8 @@ class LiveAgent(ControlSurface):
     def _create_drum_rack(self, payload):
         """Create a Drum Rack on a MIDI track.
 
-        Creates a new MIDI track and loads an empty Drum Rack device.
-        Returns track index and device info.
+        Creates a new MIDI track and loads a Drum Rack device via the
+        browser Instruments category. Returns track index and device info.
         """
         track_index = payload.get("track_index", -1)
         name = payload.get("name", "Drum Rack")
@@ -922,17 +987,25 @@ class LiveAgent(ControlSurface):
 
         track.name = name
 
-        # Load Drum Rack from browser
-        browser = self._safe_attr(song, "browser", None)
+        # Select the track so browser loads onto it
+        song.view.selected_track = track
+
+        # Load Drum Rack from browser (Instruments category)
+        browser = song.browser
         loaded = False
 
-        if browser:
-            try:
-                instruments = self._safe_attr(browser, "instruments", None)
-                if instruments:
-                    loaded = self._load_from_browser_tree(instruments, "Drum Rack")
-            except Exception:
-                pass
+        target_category = None
+        for category in browser.categories:
+            if "instrument" in category.name.lower():
+                target_category = category
+                break
+
+        if target_category is not None:
+            device_item = self._find_browser_item(target_category, "Drum Rack")
+            if device_item is not None:
+                device_item.load()
+                time.sleep(0.3)
+                loaded = True
 
         # Find the loaded device
         devices = []
@@ -961,8 +1034,10 @@ class LiveAgent(ControlSurface):
     def _load_sample_to_pad(self, payload):
         """Load a sample file onto a specific Drum Rack pad.
 
-        Uses browser tree search to find and load the sample into
-        the drum rack pad's chain sampler.
+        Strategy:
+        1. Activate the pad by creating a MIDI clip with its note
+        2. Wait for Ableton to create the chain + Simpler
+        3. Set sample.file_path on the Simpler
 
         Args:
             track_index: Track containing the Drum Rack
@@ -970,97 +1045,178 @@ class LiveAgent(ControlSurface):
             file_path: Absolute path to the sample file
         """
         import os
+        import time
 
         track_index = int(payload["track_index"])
         pad_index = int(payload.get("pad_index", payload.get("note", 0)))
         file_path = payload["file_path"]
 
+        if not os.path.isfile(file_path):
+            raise Exception("File not found: %s" % file_path)
+
         song = self.song()
         track = song.tracks[track_index]
 
         # Find Drum Rack device
-        drum_rack = None
         drum_rack_index = int(payload.get("drum_rack_index", 0))
-        if drum_rack_index < len(track.devices):
-            drum_rack = track.devices[drum_rack_index]
+        if drum_rack_index >= len(track.devices):
+            raise Exception("No device at index %d on track %d" % (drum_rack_index, track_index))
+        drum_rack = track.devices[drum_rack_index]
 
-        if drum_rack is None:
-            raise Exception("No Drum Rack found on track %d" % track_index)
-
-        # Method 1: Try drum_pads API
         drum_pads = self._safe_attr(drum_rack, "drum_pads", None)
-        if drum_pads is not None:
-            try:
-                pad = drum_pads[pad_index]
-                # Activate the pad by creating a note
-                chain = self._safe_attr(pad, "chain", None)
-                if chain is not None:
-                    # Chain exists — try to find its Simpler/Sampler device
-                    chain_devices = self._safe_attr(chain, "devices", [])
-                    for cd in chain_devices:
-                        cn = str(self._safe_attr(cd, "name", ""))
-                        if "simpler" in cn.lower() or "sampler" in cn.lower():
-                            sample = self._safe_attr(cd, "sample", None)
-                            if sample:
-                                fp = self._safe_attr(sample, "file_path", None)
-                                if fp is not None:
-                                    sample.file_path = file_path
-                                    return {
-                                        "track_index": track_index,
-                                        "pad_index": pad_index,
-                                        "file": os.path.basename(file_path),
-                                        "loaded": True,
-                                        "method": "drum_pad_sample",
-                                    }
-            except Exception as e:
-                self._log_exception("drum_pad sample load failed")
+        if drum_pads is None:
+            raise Exception("No drum_pads on device (not a Drum Rack?)")
 
-        # Method 2: Browser load — find the sample and load it
-        # First ensure pad is activated (has a chain)
-        if drum_pads is not None:
+        pad = drum_pads[pad_index]
+
+        # Step 1: Check if chain already exists
+        chain = self._safe_attr(pad, "chain", None)
+
+        if chain is None:
+            # Step 2: Activate pad by creating MIDI clip with this note
+            # Find an empty clip slot
+            target_slot = None
+            for i, cs in enumerate(track.clip_slots):
+                if not self._safe_attr(cs, "has_clip", False):
+                    target_slot = cs
+                    slot_index = i
+                    break
+
+            if target_slot is None:
+                # All slots have clips — create more scenes
+                song.create_scene(-1)
+                slot_index = len(song.scenes) - 1
+                target_slot = track.clip_slots[slot_index]
+
+            # Create clip and add the pad's note
+            target_slot.create_clip(1.0)
+            clip = target_slot.clip
+            # Ableton expects tuple of tuples: (pitch, start, duration, velocity, mute)
+            clip.select_all_notes()
+            clip.replace_selected_notes(tuple([
+                tuple([pad_index, 0.0, 1.0, 100, False])
+            ]))
+
+            # Step 3: Fire the clip to activate the pad
+            self._safe_attr(target_slot, "fire", lambda: None)()
+
+            # Give Ableton a moment to create the chain
+            time.sleep(0.3)
+
+            # Stop the clip
+            self._safe_attr(target_slot, "stop", lambda: None)()
+
+            # Delete the temporary clip
             try:
-                pad = drum_pads[pad_index]
-                chain = self._safe_attr(pad, "chain", None)
-                if chain is None:
-                    # Create a MIDI clip to activate the pad
-                    for i, cs in enumerate(track.clip_slots):
-                        if not cs.has_clip:
-                            cs.create_clip(1.0)
-                            clip = cs.clip
-                            clip.select_all_notes()
-                            clip.replace_selected_notes([
-                                {"pitch": pad_index, "start_time": 0.0,
-                                 "duration": 1.0, "velocity": 100, "mute": False}
-                            ])
-                            break
+                target_slot.delete_clip()
             except Exception:
                 pass
 
-        # Method 3: Browser search and load
-        browser = self._safe_attr(song, "browser", None)
-        if browser:
-            try:
-                # Try to find in browser samples
-                for cat_name in ["samples", "audio", "user_library"]:
-                    cat = self._safe_attr(browser, cat_name, None)
-                    if cat:
-                        loaded = self._load_from_browser_path(cat, file_path)
-                        if loaded:
-                            return {
-                                "track_index": track_index,
-                                "pad_index": pad_index,
-                                "file": os.path.basename(file_path),
-                                "loaded": True,
-                                "method": "browser_load",
-                            }
-            except Exception as e:
-                self._log_exception("browser sample load failed")
+            # Re-check chain
+            chain = self._safe_attr(pad, "chain", None)
 
+        if chain is None:
+            # Chain still not created — try direct approach
+            # Some Drum Racks auto-create chain on first MIDI note
+            return {
+                "track_index": track_index,
+                "pad_index": pad_index,
+                "file": os.path.basename(file_path),
+                "loaded": False,
+                "error": "Could not create chain on pad %d" % pad_index,
+                "drum_pads_available": True,
+            }
+
+        # Step 4: Find Simpler in chain and set sample
+        chain_devices = self._safe_attr(chain, "devices", [])
+        for cd in chain_devices:
+            cn = str(self._safe_attr(cd, "name", "")).lower()
+            ccn = str(self._safe_attr(cd, "class_name", "")).lower()
+            if "simpler" in cn or "sampler" in cn or "simpler" in ccn:
+                sample = self._safe_attr(cd, "sample", None)
+                if sample is not None:
+                    try:
+                        sample.file_path = file_path
+                        return {
+                            "track_index": track_index,
+                            "pad_index": pad_index,
+                            "file": os.path.basename(file_path),
+                            "loaded": True,
+                            "method": "simpler_file_path",
+                        }
+                    except Exception as e:
+                        return {
+                            "track_index": track_index,
+                            "pad_index": pad_index,
+                            "file": os.path.basename(file_path),
+                            "loaded": False,
+                            "error": "sample.file_path set failed: %s" % str(e),
+                        }
+
+        # No Simpler found — chain exists but no sampler device
         return {
             "track_index": track_index,
             "pad_index": pad_index,
             "file": os.path.basename(file_path),
             "loaded": False,
-            "error": "Sample loading failed — may require manual browser drag",
+            "error": "Chain exists but no Simpler/Sampler device found",
+            "chain_devices": [str(self._safe_attr(cd, "name", "")) for cd in chain_devices],
+        }
+
+    def _inspect_drum_rack(self, payload):
+        """Debug: inspect drum rack pad structure."""
+        track_index = int(payload["track_index"])
+        drum_rack_index = int(payload.get("drum_rack_index", 0))
+        pad_range = payload.get("pad_range", [0, 16])
+
+        song = self.song()
+        track = song.tracks[track_index]
+        device = track.devices[drum_rack_index]
+        drum_pads = self._safe_attr(device, "drum_pads", None)
+
+        pads_info = []
+        if drum_pads is not None:
+            for i in range(max(0, pad_range[0]), min(128, pad_range[1])):
+                try:
+                    pad = drum_pads[i]
+                    chain = self._safe_attr(pad, "chain", None)
+                    pad_info = {
+                        "index": i,
+                        "name": str(self._safe_attr(pad, "name", "")),
+                        "active": bool(self._safe_attr(pad, "active", False)),
+                        "mute": bool(self._safe_attr(pad, "mute", False)),
+                        "solo": bool(self._safe_attr(pad, "solo", False)),
+                        "has_chain": chain is not None,
+                    }
+                    if chain is not None:
+                        chain_devices = self._safe_attr(chain, "devices", [])
+                        devs = []
+                        for cd in chain_devices:
+                            cn = str(self._safe_attr(cd, "name", ""))
+                            ccn = str(self._safe_attr(cd, "class_name", ""))
+                            dev_info = {"name": cn, "class_name": ccn}
+                            # Check sample attribute
+                            sample = self._safe_attr(cd, "sample", None)
+                            if sample is not None:
+                                fp = self._safe_attr(sample, "file_path", None)
+                                dev_info["sample_file_path"] = fp
+                                # Check if file_path is settable
+                                try:
+                                    sample.file_path
+                                    dev_info["file_path_readable"] = True
+                                except Exception:
+                                    dev_info["file_path_readable"] = False
+                            devs.append(dev_info)
+                        pad_info["chain_devices"] = devs
+                    pads_info.append(pad_info)
+                except Exception as e:
+                    pads_info.append({"index": i, "error": str(e)})
+
+        return {
+            "track_index": track_index,
+            "device_name": str(self._safe_attr(device, "name", "")),
+            "device_class": str(self._safe_attr(device, "class_name", "")),
             "drum_pads_available": drum_pads is not None,
+            "pad_count": len(drum_pads) if drum_pads is not None else 0,
+            "pads": pads_info,
         }
