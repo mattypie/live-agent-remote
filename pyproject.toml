@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "live-agent-remote"
+version = "0.1.0"
+description = "MCP server wrapping the LiveAgent Ableton Live control surface"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "mtsh" }]
+keywords = ["ableton", "mcp", "live", "music-production"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "mcp>=1.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+analysis = [
+    "librosa>=0.10",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+live-agent-mcp = "mcp_server:main"
+
+[tool.setuptools]
+py-modules = ["mcp_server", "audio_analyzer", "batch_analyze", "config"]
+
+# ── Ruff ────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "UP",    # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# LiveAgent.py runs inside Ableton's embedded Python 2/3 hybrid — keep legacy style.
+"LiveAgent/LiveAgent.py" = ["UP031", "UP010", "UP041", "I001", "W293", "F841"]
+# audio_analyzer.py pre-existing style (percent-format, unused vars, etc.)
+"audio_analyzer.py" = ["UP031", "UP015", "UP024", "I001", "F841", "F401"]
+# batch_analyze.py pre-existing style
+"batch_analyze.py" = ["UP031", "I001", "W291", "W293", "F401", "F841"]
+# mcp_server.py intentionally sets REPO_DIR before imports; pre-existing style
+"mcp_server.py" = ["E402", "F401", "W293"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mcp_server", "audio_analyzer", "config"]
+
+# ── Pytest ──────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
