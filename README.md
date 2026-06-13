@@ -6,6 +6,10 @@
 
 Control tracks, clips, MIDI notes, devices, and automation from any external script or AI agent via a simple JSON socket protocol.
 
+<p>
+  <a href="https://happytown-s.github.io/live-agent-remote/"><b>🌐 Landing Page</b></a> · <a href="https://happytown-s.github.io/sample-librarian/"><b>🔍 sample-librarian</b></a>
+</p>
+
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.10+-green.svg)
 ![Ableton Live](https://img.shields.io/badge/Ableton%20Live-11%20%7C%2012-orange.svg)
