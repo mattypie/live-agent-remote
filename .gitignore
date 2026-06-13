@@ -1,3 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
 .venv/
-.analysis_cache/
-config.local.py
+*.egg-info/
