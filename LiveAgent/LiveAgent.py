@@ -31,10 +31,12 @@ class LiveAgent(ControlSurface):
         self._running = True
         self._server_socket = None
         self._command_queue = queue.Queue()
+        # SECURITY: eval/exec disabled by default. Enable with LIVEAGENT_ENABLE_UNSAFE=1
+        self._unsafe_enabled = os.environ.get("LIVEAGENT_ENABLE_UNSAFE", "0") == "1"
         self._server_thread = threading.Thread(target=self._run_server)
         self._server_thread.daemon = True
         self._server_thread.start()
-        self.log_message("[LiveAgent] listening on %s:%s" % (HOST, PORT))
+        self.log_message("[LiveAgent] listening on %s:%s (unsafe=%s)" % (HOST, PORT, self._unsafe_enabled))
         self.schedule_message(1, self._drain_commands)
 
     def disconnect(self):
@@ -197,7 +199,16 @@ class LiveAgent(ControlSurface):
         raise Exception("Unknown command: %s" % command)
 
     def _exec(self, payload):
-        """Execute Python statement in LiveAgent context."""
+        """Execute Python statement in LiveAgent context.
+
+        SECURITY: Disabled by default. Enable with LIVEAGENT_ENABLE_UNSAFE=1
+        environment variable before launching Ableton.
+        """
+        if not self._unsafe_enabled:
+            return {
+                "error": "exec is disabled. Set LIVEAGENT_ENABLE_UNSAFE=1 environment variable to enable.",
+                "security": "This command allows arbitrary code execution and is disabled by default."
+            }
         stmt = payload.get("stmt", "")
         try:
             import Live
@@ -214,7 +225,16 @@ class LiveAgent(ControlSurface):
             return {"error": str(e), "type": type(e).__name__}
 
     def _eval(self, payload):
-        """Evaluate Python expression in LiveAgent context."""
+        """Evaluate Python expression in LiveAgent context.
+
+        SECURITY: Disabled by default. Enable with LIVEAGENT_ENABLE_UNSAFE=1
+        environment variable before launching Ableton.
+        """
+        if not self._unsafe_enabled:
+            return {
+                "error": "eval is disabled. Set LIVEAGENT_ENABLE_UNSAFE=1 environment variable to enable.",
+                "security": "This command allows arbitrary code execution and is disabled by default."
+            }
         expr = payload.get("expr", "")
         try:
             import Live
@@ -464,6 +484,23 @@ class LiveAgent(ControlSurface):
             "point_count": inserted,
         }
 
+    def _browser_root(self, browser, browser_type):
+        """Return the Live Browser root for a friendly browser_type string."""
+        bt = str(browser_type or "").lower().replace("-", "_").replace(" ", "_")
+        if bt in ("plugin", "plugins", "plug_in", "plug_ins", "vst", "vst3"):
+            return browser.plugins
+        if bt in ("instrument", "instruments"):
+            return browser.instruments
+        if bt in ("drum", "drums"):
+            return browser.drums
+        if bt in ("audio_effect", "audio_effects", "audio"):
+            return browser.audio_effects
+        if bt in ("midi_effect", "midi_effects", "midi"):
+            return browser.midi_effects
+        if bt in ("sample", "samples"):
+            return browser.samples
+        raise Exception("Unknown browser_type '%s'" % browser_type)
+
     def _load_device(self, payload):
         """Load a device onto a track via Ableton's browser tree.
 
@@ -482,38 +519,11 @@ class LiveAgent(ControlSurface):
         song = self.song()
         song.view.selected_track = track
 
-        # Navigate Ableton's browser to find and load the device
-        browser = song.browser
+        # Navigate Ableton's browser to find and load the device.
+        # Browser belongs to the Application object, not Song.
+        browser = Live.Application.get_application().browser
         
-        # Try to find the right browser category
-        target_category = None
-        for category in browser.categories:
-            cat_name = category.name.lower()
-            if browser_type.lower() == "plug-in" and "plug-in" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "instrument" and "instrument" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "audio effect" and "audio effect" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "midi effect" and "midi effect" in cat_name:
-                target_category = category
-                break
-
-        if target_category is None:
-            # Fallback: try Plug-ins category
-            for category in browser.categories:
-                if "plug" in category.name.lower():
-                    target_category = category
-                    break
-
-        if target_category is None:
-            raise Exception(
-                "Could not find browser category '%s'. Available: %s"
-                % (browser_type, [c.name for c in browser.categories])
-            )
+        target_category = self._browser_root(browser, browser_type)
 
         # Search for the device in the category tree
         device_item = self._find_browser_item(target_category, device_name)
@@ -525,7 +535,7 @@ class LiveAgent(ControlSurface):
             )
 
         # Load the device onto the selected track
-        device_item.load()
+        browser.load_item(device_item)
         
         # Small wait then check if device appeared
         time.sleep(0.3)
@@ -546,37 +556,9 @@ class LiveAgent(ControlSurface):
         query = payload.get("query", "").lower()
         max_results = int(payload.get("max_results", 100))
 
-        song = self.song()
-        browser = song.browser
-
-        # Find the matching browser category
-        target_category = None
-        for category in browser.categories:
-            cat_name = category.name.lower()
-            if browser_type.lower() == "plug-in" and "plug-in" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "instrument" and "instrument" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "audio effect" and "audio effect" in cat_name:
-                target_category = category
-                break
-            elif browser_type.lower() == "midi effect" and "midi effect" in cat_name:
-                target_category = category
-                break
-
-        if target_category is None:
-            for category in browser.categories:
-                if "plug" in category.name.lower():
-                    target_category = category
-                    break
-
-        if target_category is None:
-            raise Exception(
-                "Could not find browser category '%s'. Available: %s"
-                % (browser_type, [c.name for c in browser.categories])
-            )
+        import Live
+        browser = Live.Application.get_application().browser
+        target_category = self._browser_root(browser, browser_type)
 
         # Collect all loadable devices from the browser tree
         devices = []
@@ -970,8 +952,12 @@ class LiveAgent(ControlSurface):
         Creates a new MIDI track and loads a Drum Rack device via the
         browser Instruments category. Returns track index and device info.
         """
+        import Live
+
         track_index = payload.get("track_index", -1)
         name = payload.get("name", "Drum Rack")
+        kit_name = payload.get("kit_name", "808 Core Kit.adg")
+        empty = bool(payload.get("empty", False))
 
         song = self.song()
 
@@ -990,20 +976,18 @@ class LiveAgent(ControlSurface):
         # Select the track so browser loads onto it
         song.view.selected_track = track
 
-        # Load Drum Rack from browser (Instruments category)
-        browser = song.browser
+        # Load a usable Drum Rack template by default. Empty Drum Racks have no
+        # pad chains, and Live's Python API exposes copy_pad but no create_pad.
+        browser = Live.Application.get_application().browser
         loaded = False
 
-        target_category = None
-        for category in browser.categories:
-            if "instrument" in category.name.lower():
-                target_category = category
-                break
+        target_category = browser.instruments if empty else browser.drums
+        target_name = "Drum Rack" if empty else kit_name
 
         if target_category is not None:
-            device_item = self._find_browser_item(target_category, "Drum Rack")
+            device_item = self._find_browser_item(target_category, target_name)
             if device_item is not None:
-                device_item.load()
+                browser.load_item(device_item)
                 time.sleep(0.3)
                 loaded = True
 
@@ -1029,27 +1013,54 @@ class LiveAgent(ControlSurface):
             "devices": devices,
             "drum_rack_index": drum_rack_index,
             "loaded": loaded or drum_rack_index is not None,
+            "loaded_item": target_name if loaded else None,
+            "empty": empty,
         }
 
+    def _find_browser_sample_by_name(self, browser, sample_name):
+        """Find a BrowserSample by name from browser.samples (flat list)."""
+        return self._find_browser_item_by_names(browser.samples, [sample_name])
+
+    def _find_browser_item_by_names(self, root, names):
+        """Find a loadable browser item by exact or partial name match."""
+        exact_names = set([n for n in names if n])
+        lowered = [n.lower() for n in exact_names]
+
+        def visit(node):
+            node_name = str(self._safe_attr(node, "name", ""))
+            node_lower = node_name.lower()
+            if node_name in exact_names and self._safe_attr(node, "is_loadable", False):
+                return node
+            if node_lower and any(n in node_lower for n in lowered):
+                if self._safe_attr(node, "is_loadable", False):
+                    return node
+
+            children = self._safe_attr(node, "children", None)
+            if children:
+                for child in children:
+                    found = visit(child)
+                    if found is not None:
+                        return found
+
+            items = self._safe_attr(node, "items", None)
+            if items:
+                for item in items:
+                    found = visit(item)
+                    if found is not None:
+                        return found
+            return None
+
+        return visit(root)
+
     def _load_sample_to_pad(self, payload):
-        """Load a sample file onto a specific Drum Rack pad.
-
-        Strategy:
-        1. Activate the pad by creating a MIDI clip with its note
-        2. Wait for Ableton to create the chain + Simpler
-        3. Set sample.file_path on the Simpler
-
-        Args:
-            track_index: Track containing the Drum Rack
-            pad_index: Pad number (0-127, maps to MIDI note)
-            file_path: Absolute path to the sample file
-        """
+        """Load a browser-indexed sample onto a Drum Rack pad."""
         import os
-        import time
+        import Live
 
         track_index = int(payload["track_index"])
-        pad_index = int(payload.get("pad_index", payload.get("note", 0)))
+        pad_index = int(payload.get("pad_index", payload.get("note", 36)))
         file_path = payload["file_path"]
+        reset_effects = payload.get("reset_effects", False)
 
         if not os.path.isfile(file_path):
             raise Exception("File not found: %s" % file_path)
@@ -1068,99 +1079,106 @@ class LiveAgent(ControlSurface):
             raise Exception("No drum_pads on device (not a Drum Rack?)")
 
         pad = drum_pads[pad_index]
+        was_empty = False
 
-        # Step 1: Check if chain already exists
-        chain = self._safe_attr(pad, "chain", None)
-
-        if chain is None:
-            # Step 2: Activate pad by creating MIDI clip with this note
-            # Find an empty clip slot
-            target_slot = None
-            for i, cs in enumerate(track.clip_slots):
-                if not self._safe_attr(cs, "has_clip", False):
-                    target_slot = cs
-                    slot_index = i
+        # Check if pad has an existing chain
+        chains = self._safe_attr(pad, "chains", None)
+        if chains is None or len(chains) == 0:
+            # Empty pad — find a template pad to copy from
+            was_empty = True
+            template_idx = None
+            for i in range(128):
+                test_chains = self._safe_attr(drum_pads[i], "chains", None)
+                if test_chains is not None and len(test_chains) > 0:
+                    template_idx = i
                     break
 
-            if target_slot is None:
-                # All slots have clips — create more scenes
-                song.create_scene(-1)
-                slot_index = len(song.scenes) - 1
-                target_slot = track.clip_slots[slot_index]
+            if template_idx is None:
+                raise Exception(
+                    "No pad with existing chain found. Load a kit (.adg) first to create a template."
+                )
 
-            # Create clip and add the pad's note
-            target_slot.create_clip(1.0)
-            clip = target_slot.clip
-            # Ableton expects tuple of tuples: (pitch, start, duration, velocity, mute)
-            clip.select_all_notes()
-            clip.replace_selected_notes(tuple([
-                tuple([pad_index, 0.0, 1.0, 100, False])
-            ]))
+            # Copy template pad to target pad
+            drum_rack.copy_pad(template_idx, pad_index)
 
-            # Step 3: Fire the clip to activate the pad
-            self._safe_attr(target_slot, "fire", lambda: None)()
+            # Re-fetch pad after copy
+            pad = drum_pads[pad_index]
+            chains = self._safe_attr(pad, "chains", None)
 
-            # Give Ableton a moment to create the chain
-            time.sleep(0.3)
+            if chains is None or len(chains) == 0:
+                raise Exception("copy_pad failed to create chain on pad %d" % pad_index)
 
-            # Stop the clip
-            self._safe_attr(target_slot, "stop", lambda: None)()
+        chain = chains[0]
+        devices = self._safe_attr(chain, "devices", [])
 
-            # Delete the temporary clip
-            try:
-                target_slot.delete_clip()
-            except Exception:
-                pass
+        if len(devices) == 0:
+            raise Exception("Pad %d chain has no devices" % pad_index)
 
-            # Re-check chain
-            chain = self._safe_attr(pad, "chain", None)
+        first_device = devices[0]
 
-        if chain is None:
-            # Chain still not created — try direct approach
-            # Some Drum Racks auto-create chain on first MIDI note
-            return {
-                "track_index": track_index,
-                "pad_index": pad_index,
-                "file": os.path.basename(file_path),
-                "loaded": False,
-                "error": "Could not create chain on pad %d" % pad_index,
-                "drum_pads_available": True,
-            }
+        inner_chains = self._safe_attr(first_device, "chains", None)
+        if inner_chains is not None and len(inner_chains) > 0:
+            inner_chain = inner_chains[0]
+        else:
+            inner_chain = chain
 
-        # Step 4: Find Simpler in chain and set sample
-        chain_devices = self._safe_attr(chain, "devices", [])
-        for cd in chain_devices:
-            cn = str(self._safe_attr(cd, "name", "")).lower()
-            ccn = str(self._safe_attr(cd, "class_name", "")).lower()
-            if "simpler" in cn or "sampler" in cn or "simpler" in ccn:
-                sample = self._safe_attr(cd, "sample", None)
-                if sample is not None:
-                    try:
-                        sample.file_path = file_path
-                        return {
-                            "track_index": track_index,
-                            "pad_index": pad_index,
-                            "file": os.path.basename(file_path),
-                            "loaded": True,
-                            "method": "simpler_file_path",
-                        }
-                    except Exception as e:
-                        return {
-                            "track_index": track_index,
-                            "pad_index": pad_index,
-                            "file": os.path.basename(file_path),
-                            "loaded": False,
-                            "error": "sample.file_path set failed: %s" % str(e),
-                        }
+        browser = Live.Application.get_application().browser
+        sample_names = [os.path.basename(file_path)]
+        real_name = os.path.basename(os.path.realpath(file_path))
+        if real_name not in sample_names:
+            sample_names.append(real_name)
+        browser_item = self._find_browser_item_by_names(browser.samples, sample_names)
 
-        # No Simpler found — chain exists but no sampler device
+        if browser_item is None:
+            raise Exception(
+                "Could not find sample in Ableton browser: %s. "
+                "Add the folder to Ableton's Places/User Library and let Live index it."
+                % ", ".join(sample_names)
+            )
+
+        temp_track_index = len(song.tracks)
+        song.create_midi_track(-1)
+        temp_track = song.tracks[temp_track_index]
+        temp_track.name = "LiveAgent sample temp"
+        song.view.selected_track = temp_track
+        browser.load_item(browser_item)
+        time.sleep(0.5)
+
+        if len(temp_track.devices) == 0:
+            song.delete_track(temp_track_index)
+            raise Exception("Loading sample did not create a Simpler device")
+
+        new_device = temp_track.devices[0]
+
+        current_devices = list(self._safe_attr(inner_chain, "devices", []))
+        if reset_effects:
+            for idx in range(len(current_devices) - 1, -1, -1):
+                try:
+                    inner_chain.delete_device(idx)
+                except Exception:
+                    pass
+        elif len(current_devices) > 0:
+            inner_chain.delete_device(0)
+
+        try:
+            song.move_device(new_device, inner_chain, 0)
+        finally:
+            for idx in range(len(song.tracks) - 1, -1, -1):
+                try:
+                    if song.tracks[idx] == temp_track:
+                        song.delete_track(idx)
+                        break
+                except Exception:
+                    pass
+
         return {
             "track_index": track_index,
             "pad_index": pad_index,
             "file": os.path.basename(file_path),
-            "loaded": False,
-            "error": "Chain exists but no Simpler/Sampler device found",
-            "chain_devices": [str(self._safe_attr(cd, "name", "")) for cd in chain_devices],
+            "loaded": True,
+            "method": "browser_load_move_device",
+            "was_empty_pad": was_empty,
+            "reset_effects": reset_effects,
         }
 
     def _inspect_drum_rack(self, payload):
@@ -1179,16 +1197,18 @@ class LiveAgent(ControlSurface):
             for i in range(max(0, pad_range[0]), min(128, pad_range[1])):
                 try:
                     pad = drum_pads[i]
-                    chain = self._safe_attr(pad, "chain", None)
+                    chains = self._safe_attr(pad, "chains", None)
+                    has_chain = chains is not None and len(chains) > 0
                     pad_info = {
                         "index": i,
                         "name": str(self._safe_attr(pad, "name", "")),
                         "active": bool(self._safe_attr(pad, "active", False)),
                         "mute": bool(self._safe_attr(pad, "mute", False)),
                         "solo": bool(self._safe_attr(pad, "solo", False)),
-                        "has_chain": chain is not None,
+                        "has_chain": has_chain,
                     }
-                    if chain is not None:
+                    if has_chain:
+                        chain = chains[0]
                         chain_devices = self._safe_attr(chain, "devices", [])
                         devs = []
                         for cd in chain_devices:

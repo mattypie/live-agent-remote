@@ -146,6 +146,7 @@ async def list_tools() -> list[Tool]:
                             },
                         },
                     },
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -171,6 +172,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "track_index": {"type": "integer"},
                     "slot_index": {"type": "integer"},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -198,6 +200,7 @@ async def list_tools() -> list[Tool]:
                     "parameter_index": {"type": "integer", "description": "Parameter index"},
                     "parameter_name": {"type": "string", "description": "Parameter name (alternative to index)"},
                     "value": {"type": "number", "description": "New parameter value"},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -225,6 +228,7 @@ async def list_tools() -> list[Tool]:
                         },
                     },
                     "step_duration": {"type": "number", "description": "Step duration in beats (default 0.25)", "default": 0.25},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -242,6 +246,7 @@ async def list_tools() -> list[Tool]:
                         "description": "Browser category: 'plug-in', 'instrument', 'audio_effect', 'midi_effect'",
                         "default": "plug-in",
                     },
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -327,6 +332,7 @@ async def list_tools() -> list[Tool]:
                     "pitch_coarse": {"type": "integer", "description": "Pitch transpose (semitones, audio only)"},
                     "pitch_fine": {"type": "number", "description": "Fine pitch (cents, audio only)"},
                     "gain": {"type": "number", "description": "Clip gain (audio only)"},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -353,6 +359,7 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "track_index": {"type": "integer"},
                     "slot_index": {"type": "integer"},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -367,6 +374,7 @@ async def list_tools() -> list[Tool]:
                     "slot_index": {"type": "integer"},
                     "warping": {"type": "boolean", "description": "Enable/disable warp"},
                     "warp_mode": {"type": "integer", "description": "0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex, 5=complex pro"},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -448,27 +456,31 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="create_drum_rack",
-            description="Create a new Drum Rack on a MIDI track. Creates the track and loads the Drum Rack instrument from Ableton's browser.",
+            description="Create a MIDI track with a usable Drum Rack. By default loads 808 Core Kit.adg so pads 36-51 already have chains that samples can be replaced into. Set empty=true only when you explicitly want an empty Drum Rack.",
             inputSchema={
                 "type": "object",
                 "required": [],
                 "properties": {
                     "track_index": {"type": "integer", "description": "Track index to create at. -1 = end of track list (default)"},
                     "name": {"type": "string", "description": "Track name (default: 'Drum Rack')"},
+                    "kit_name": {"type": "string", "description": "Drum rack preset from Ableton's Drums browser root (default: '808 Core Kit.adg')", "default": "808 Core Kit.adg"},
+                    "empty": {"type": "boolean", "description": "Load an empty Drum Rack instead of a kit template. Empty racks cannot receive samples until a pad chain exists.", "default": False},
                 },
             },
         ),
         Tool(
             name="load_sample_to_pad",
-            description="Load a sample file onto a specific pad of a Drum Rack. Pad index maps to MIDI note (0-127). Use create_drum_rack first, then load samples.",
+            description="Load a browser-indexed sample file onto a Drum Rack pad by loading it as a Simpler then moving it into the pad chain. Requires a pad chain/template; create_drum_rack's default 808 kit provides pads 36-51. Pad index is MIDI note number: 36=C1 kick, 38=snare, 42=closed hat, 46=open hat.",
             inputSchema={
                 "type": "object",
                 "required": ["track_index", "pad_index", "file_path"],
                 "properties": {
                     "track_index": {"type": "integer", "description": "Track containing the Drum Rack"},
-                    "pad_index": {"type": "integer", "description": "Pad number (0-127, maps to MIDI note)"},
-                    "file_path": {"type": "string", "description": "Absolute path to sample file"},
+                    "pad_index": {"type": "integer", "description": "MIDI note number for the Drum Rack pad. Use 36-51 for the visible 4x4 pad bank; 36=C1 kick.", "default": 36},
+                    "file_path": {"type": "string", "description": "Absolute path to a sample file that Ableton Browser can find/index"},
                     "drum_rack_index": {"type": "integer", "description": "Device index of Drum Rack (default: 0)", "default": 0},
+                    "reset_effects": {"type": "boolean", "description": "Delete all devices in the pad chain before moving the new Simpler. If false, only the first instrument device is replaced and later effects are kept.", "default": False},
+                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -492,7 +504,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="eval",
-            description="Evaluate a Python expression in LiveAgent's Ableton Live context. Returns the result. Available variables: Live, song, app, os, json. Use for read-only queries. Local use only — security risk if exposed.",
+            description="Evaluate a Python expression in LiveAgent's Ableton Live context. Returns the result. Available variables: Live, song, app, os, json. Use for read-only queries. SECURITY: Disabled by default. Set LIVEAGENT_ENABLE_UNSAFE=1 environment variable before launching Ableton to enable.",
             inputSchema={
                 "type": "object",
                 "required": ["expr"],
@@ -503,7 +515,7 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="exec",
-            description="Execute a Python statement in LiveAgent's Ableton Live context. Available variables: Live, song, app, os, json. Use for mutations. Local use only — security risk if exposed.",
+            description="Execute a Python statement in LiveAgent's Ableton Live context. Available variables: Live, song, app, os, json. Use for mutations. SECURITY: Disabled by default. Set LIVEAGENT_ENABLE_UNSAFE=1 environment variable before launching Ableton to enable.",
             inputSchema={
                 "type": "object",
                 "required": ["stmt"],
@@ -515,10 +527,63 @@ async def list_tools() -> list[Tool]:
     ]
 
 
+# ── Dry Run Support ──────────────────────────────────────────────
+DESTRUCTIVE_TOOLS = {
+    "delete_clip": lambda a: {
+        "would_do": "Delete clip",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "clear_clip_notes": lambda a: {
+        "would_do": "Clear all MIDI notes from clip",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "set_parameter_value": lambda a: {
+        "would_do": f"Set parameter value to {a.get('value')}",
+        "target": f"Track {a.get('track_index')} / Device {a.get('device_index', a.get('device_name', '?'))} / Param {a.get('parameter_index', a.get('parameter_name', '?'))}",
+    },
+    "load_device": lambda a: {
+        "would_do": f"Load device '{a.get('device_name')}'",
+        "target": f"Track {a.get('track_index')} ({a.get('browser_type', 'plug-in')})",
+    },
+    "load_sample_to_pad": lambda a: {
+        "would_do": f"Load sample to pad {a.get('pad_index')}",
+        "target": f"Track {a.get('track_index')} / Pad {a.get('pad_index')} / {a.get('file_path', '?')}",
+    },
+    "set_clip_properties": lambda a: {
+        "would_do": "Set clip properties",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "set_clip_warp": lambda a: {
+        "would_do": "Set clip warp properties",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')} warping={a.get('warping')} mode={a.get('warp_mode')}",
+    },
+    "write_midi_notes": lambda a: {
+        "would_do": f"Write {len(a.get('notes', []))} MIDI notes",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "write_clip_automation": lambda a: {
+        "would_do": f"Write {len(a.get('points', []))} automation points",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+}
+
+DRY_RUN_SCHEMA = {
+    "type": "boolean",
+    "description": "If true, return what would happen without executing. Use to preview destructive operations before running them.",
+    "default": False,
+}
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
     args = arguments or {}
-    
+
+    # ── Dry run interception ──
+    if args.get("dry_run") and name in DESTRUCTIVE_TOOLS:
+        preview = DESTRUCTIVE_TOOLS[name](args)
+        result = {"dry_run": True, "safe": True, **preview}
+        return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
     # Handle audio analysis locally (not through Ableton socket)
     if name == "analyze_audio_file":
         try:
@@ -578,6 +643,9 @@ async def call_tool(name: str, arguments: dict | None) -> list[TextContent]:
             result = {"error": str(e)}
         return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
     
+    # Strip dry_run before forwarding to LiveAgent (it's an MCP-layer parameter)
+    args.pop("dry_run", None)
+
     result = liveagent_send(name, args)
     return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
 
