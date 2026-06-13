@@ -524,6 +524,28 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="batch",
+            description="Execute multiple LiveAgent commands as a single undo step. All operations can be undone with one Ctrl+Z. Stops on first error but keeps the undo group intact (user can undo everything done so far). Example: commands=[{'command':'create_midi_track','payload':{'index':-1}}, {'command':'create_session_clip','payload':{'track_index':0,'slot_index':0}}]",
+            inputSchema={
+                "type": "object",
+                "required": ["commands"],
+                "properties": {
+                    "commands": {
+                        "type": "array",
+                        "description": "List of command objects to execute in order",
+                        "items": {
+                            "type": "object",
+                            "required": ["command"],
+                            "properties": {
+                                "command": {"type": "string", "description": "LiveAgent command name (e.g. 'create_midi_track', 'write_midi_notes')"},
+                                "payload": {"type": "object", "description": "Command arguments"},
+                            },
+                        },
+                    },
+                },
+            },
+        ),
     ]
 
 
