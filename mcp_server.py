@@ -543,6 +543,7 @@ async def list_tools() -> list[Tool]:
                             },
                         },
                     },
+                    "dry_run": {"type": "boolean", "description": "If true, preview all commands without executing.", "default": False},
                 },
             },
         ),
@@ -586,6 +587,10 @@ DESTRUCTIVE_TOOLS = {
     "write_clip_automation": lambda a: {
         "would_do": f"Write {len(a.get('points', []))} automation points",
         "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "batch": lambda a: {
+        "would_do": f"Execute {len(a.get('commands', []))} commands as single undo step",
+        "target": ", ".join(c.get("command", "?") for c in a.get("commands", [])),
     },
 }
 
