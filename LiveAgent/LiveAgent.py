@@ -191,12 +191,63 @@ class LiveAgent(ControlSurface):
         if command == "inspect_drum_rack":
             return self._inspect_drum_rack(payload)
 
+        if command == "begin_undo_step":
+            return self._begin_undo_step()
+        if command == "end_undo_step":
+            return self._end_undo_step()
+        if command == "batch":
+            return self._batch(payload)
+
         if command == "eval":
             return self._eval(payload)
         if command == "exec":
             return self._exec(payload)
 
         raise Exception("Unknown command: %s" % command)
+
+    # ── Undo Group Support ──────────────────────────────────────────
+
+    def _begin_undo_step(self):
+        """Begin an undo group. All subsequent operations will be grouped
+        into a single undoable step once end_undo_step is called."""
+        self.song().begin_undo_step()
+        return {"undo_step_started": True}
+
+    def _end_undo_step(self):
+        """End the current undo group. All operations since begin_undo_step
+        can now be undone with a single Ctrl+Z."""
+        self.song().end_undo_step()
+        return {"undo_step_ended": True}
+
+    def _batch(self, payload):
+        """Execute multiple commands as a single undo step.
+
+        payload.commands: list of {command: str, payload: dict}
+        All commands execute within begin_undo_step/end_undo_step.
+        If a command fails, execution stops and the partial results are returned,
+        but the undo step is still ended (user can Ctrl+Z to undo everything done).
+        """
+        commands = payload.get("commands", [])
+        if not commands:
+            return {"results": [], "count": 0}
+
+        results = []
+        self.song().begin_undo_step()
+        try:
+            for i, cmd_spec in enumerate(commands):
+                cmd = cmd_spec.get("command")
+                cmd_payload = cmd_spec.get("payload") or {}
+                try:
+                    result = self._execute({"command": cmd, "payload": cmd_payload})
+                    results.append({"index": i, "command": cmd, "ok": True, "result": result})
+                except Exception as err:
+                    results.append({"index": i, "command": cmd, "ok": False, "error": str(err)})
+                    # Stop on first error — user can undo everything done so far
+                    break
+        finally:
+            self.song().end_undo_step()
+
+        return {"results": results, "count": len(results)}
 
     def _exec(self, payload):
         """Execute Python statement in LiveAgent context.
