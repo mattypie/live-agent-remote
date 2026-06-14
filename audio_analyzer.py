@@ -617,7 +617,10 @@ class AudioAnalyzer:
             from config import get_samples_path
             base_path = get_samples_path()
             if not base_path:
-                base_path = "/Users/mtsh/書類/Ableton Live/NI Samples"
+                raise ValueError(
+                    "No sample path found. Set SAMPLES_PATH env var, "
+                    "configure config.local.py, or pass base_path explicitly."
+                )
 
         if categories is None:
             # Scan all category folders
