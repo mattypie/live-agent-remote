@@ -15,10 +15,13 @@ Usage:
     # {"bpm": 128.5, "key": "Fm", "beat_positions": [0.0, 0.468, ...]}
 """
 
-import numpy as np
-import os
-import json
 import hashlib
+import json
+import os
+import sqlite3
+import threading
+
+import numpy as np
 
 try:
     import librosa
@@ -26,12 +29,43 @@ try:
 except ImportError:
     HAS_LIBROSA = False
 
-# Cache directory for analysis results
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".analysis_cache")
+# SQLite cache database path
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "analysis_cache.db")
+
+# Thread-local storage for connections
+_local = threading.local()
+
+
+def _get_conn():
+    """Get a thread-local SQLite connection."""
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL,
+                file_hash TEXT NOT NULL,
+                analysis_type TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(file_path, analysis_type)
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_cache_path_type "
+            "ON analysis_cache(file_path, analysis_type)"
+        )
+        conn.commit()
+        _local.conn = conn
+    return conn
 
 
 class AnalysisCache:
-    """Persistent JSON cache for audio analysis results."""
+    """Persistent SQLite cache for audio analysis results."""
 
     @staticmethod
     def _file_hash(file_path):
@@ -46,57 +80,66 @@ class AnalysisCache:
     @staticmethod
     def get(file_path, analysis_type="pitch"):
         """Get cached result if available and valid."""
-        key = AnalysisCache._file_hash(file_path)
-        cache_file = os.path.join(CACHE_DIR, "%s_%s.json" % (key, analysis_type))
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, "r") as f:
-                    data = json.load(f)
-                # Verify the file hasn't changed
-                if data.get("_src") == os.path.basename(file_path):
-                    return data.get("result")
-            except (json.JSONDecodeError, IOError):
-                pass
+        fhash = AnalysisCache._file_hash(file_path)
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT file_hash, result_json FROM analysis_cache "
+            "WHERE file_path = ? AND analysis_type = ?",
+            (file_path, analysis_type),
+        ).fetchone()
+        if row and row[0] == fhash:
+            return json.loads(row[1])
         return None
 
     @staticmethod
     def set(file_path, analysis_type, result):
         """Save analysis result to cache."""
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        key = AnalysisCache._file_hash(file_path)
-        cache_file = os.path.join(CACHE_DIR, "%s_%s.json" % (key, analysis_type))
-        try:
-            with open(cache_file, "w") as f:
-                json.dump({"_src": os.path.basename(file_path), "result": result}, f)
-        except IOError:
-            pass
+        fhash = AnalysisCache._file_hash(file_path)
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO analysis_cache (file_path, file_hash, analysis_type, result_json) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(file_path, analysis_type) "
+            "DO UPDATE SET file_hash = excluded.file_hash, "
+            "result_json = excluded.result_json, created_at = CURRENT_TIMESTAMP",
+            (file_path, fhash, analysis_type, json.dumps(result)),
+        )
+        conn.commit()
 
     @staticmethod
     def batch_get(file_paths, analysis_type="pitch"):
         """Get multiple cached results. Returns {path: result} for hits."""
         hits = {}
-        for fp in file_paths:
-            cached = AnalysisCache.get(fp, analysis_type)
-            if cached is not None:
-                hits[fp] = cached
+        conn = _get_conn()
+        placeholders = ",".join("?" * len(file_paths))
+        rows = conn.execute(
+            f"SELECT file_path, file_hash, result_json FROM analysis_cache "
+            f"WHERE file_path IN ({placeholders}) AND analysis_type = ?",
+            (*file_paths, analysis_type),
+        ).fetchall()
+        for fp, fhash, rjson in rows:
+            current_hash = AnalysisCache._file_hash(fp)
+            if fhash == current_hash:
+                hits[fp] = json.loads(rjson)
         return hits
 
     @staticmethod
     def stats():
         """Return cache statistics."""
-        if not os.path.exists(CACHE_DIR):
-            return {"files": 0, "size_mb": 0}
-        files = [f for f in os.listdir(CACHE_DIR) if f.endswith(".json")]
-        total_size = sum(os.path.getsize(os.path.join(CACHE_DIR, f)) for f in files)
-        return {"files": len(files), "size_mb": round(total_size / 1048576, 2)}
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*), "
+            "COALESCE(SUM(LENGTH(result_json)), 0) "
+            "FROM analysis_cache"
+        ).fetchone()
+        return {"files": row[0], "size_mb": round(row[1] / 1048576, 2)}
 
     @staticmethod
     def clear():
         """Clear all cached results."""
-        if os.path.exists(CACHE_DIR):
-            for f in os.listdir(CACHE_DIR):
-                if f.endswith(".json"):
-                    os.remove(os.path.join(CACHE_DIR, f))
+        conn = _get_conn()
+        conn.execute("DELETE FROM analysis_cache")
+        conn.commit()
 
 
 class AudioAnalyzer:

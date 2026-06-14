@@ -3,6 +3,5 @@ __pycache__/
 .DS_Store
 .venv/
 *.egg-info/
-.analysis_cache/
 config.local.py
 data/
