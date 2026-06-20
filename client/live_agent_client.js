@@ -66,6 +66,33 @@ class LiveAgentClient {
   listTracks()                     { return this._send('list_tracks'); }
   createMidiTrack(index = -1)      { return this._send('create_midi_track', { index }); }
 
+  // ── Transport & Playback ──────────────────────────────
+
+  getTransportState()              { return this._send('get_transport_state'); }
+  startPlaying()                   { return this._send('start_playing'); }
+  stopPlaying()                    { return this._send('stop_playing'); }
+  stopAllClips()                   { return this._send('stop_all_clips'); }
+  setTempo(tempo)                  { return this._send('set_tempo', { tempo }); }
+  tapTempo()                       { return this._send('tap_tempo'); }
+
+  setTimeSignature(opts) {
+    const payload = {};
+    if (opts.numerator != null) payload.numerator = opts.numerator;
+    if (opts.denominator != null) payload.denominator = opts.denominator;
+    return this._send('set_time_signature', payload);
+  }
+
+  setMetronome(enabled)            { return this._send('set_metronome', { enabled }); }
+  setOverdub(enabled)              { return this._send('set_overdub', { enabled }); }
+  launchScene(sceneIndex)          { return this._send('launch_scene', { scene_index: sceneIndex }); }
+
+  launchClip(opts) {
+    return this._send('launch_clip', {
+      track_index: opts.trackIndex,
+      slot_index: opts.slotIndex,
+    });
+  }
+
   createSessionClip(opts) {
     return this._send('create_session_clip', {
       track_index: opts.trackIndex,

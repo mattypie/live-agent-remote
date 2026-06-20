@@ -37,6 +37,15 @@ EXPECTED_DESTRUCTIVE_TOOLS = {
     "write_midi_notes",
     "write_clip_automation",
     "batch",
+    # Transport (destructive: change playback/tempo/signature)
+    "stop_all_clips",
+    "set_tempo",
+    "tap_tempo",
+    "set_time_signature",
+    "set_metronome",
+    "set_overdub",
+    "launch_scene",
+    "launch_clip",
 }
 
 
@@ -188,3 +197,106 @@ async def test_exec_enabled_with_env_var(mock_send_eval, monkeypatch):
     data = await _call("exec", stmt="x = 1")
 
     assert "error" not in data
+
+
+# ── Transport commands ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_start_playing_forwards(mock_send):
+    """``start_playing`` forwards to LiveAgent with no payload mutation."""
+    await _call("start_playing")
+
+    mock_send.assert_called_once()
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "start_playing"
+    assert "dry_run" not in forwarded_payload
+
+
+@pytest.mark.asyncio
+async def test_stop_playing_forwards(mock_send):
+    """``stop_playing`` forwards to LiveAgent."""
+    await _call("stop_playing")
+
+    forwarded_command, _ = mock_send.call_args[0]
+    assert forwarded_command == "stop_playing"
+
+
+@pytest.mark.asyncio
+async def test_set_tempo_forwards_value(mock_send):
+    """``set_tempo`` forwards the tempo value verbatim."""
+    await _call("set_tempo", tempo=124.0)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_tempo"
+    assert forwarded_payload["tempo"] == 124.0
+    assert "dry_run" not in forwarded_payload
+
+
+@pytest.mark.asyncio
+async def test_set_tempo_dry_run_preview(mock_send):
+    """``set_tempo`` with ``dry_run=True`` returns a preview without executing."""
+    data = await _call("set_tempo", tempo=140.0, dry_run=True)
+
+    assert data["dry_run"] is True
+    assert data["safe"] is True
+    assert "140.0" in data["would_do"]
+    assert "transport" in data["target"].lower()
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_launch_scene_forwards_index(mock_send):
+    """``launch_scene`` forwards the scene_index."""
+    await _call("launch_scene", scene_index=3)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "launch_scene"
+    assert forwarded_payload["scene_index"] == 3
+
+
+@pytest.mark.asyncio
+async def test_launch_scene_dry_run_preview(mock_send):
+    """``launch_scene`` with ``dry_run=True`` previews without executing."""
+    data = await _call("launch_scene", scene_index=2, dry_run=True)
+
+    assert data["dry_run"] is True
+    assert data["safe"] is True
+    assert "2" in data["would_do"]
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_launch_clip_forwards(mock_send):
+    """``launch_clip`` forwards track and slot indices."""
+    await _call("launch_clip", track_index=1, slot_index=0)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "launch_clip"
+    assert forwarded_payload["track_index"] == 1
+    assert forwarded_payload["slot_index"] == 0
+
+
+@pytest.mark.asyncio
+async def test_set_time_signature_forwards(mock_send):
+    """``set_time_signature`` forwards both numerator and denominator."""
+    await _call("set_time_signature", numerator=6, denominator=8)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_time_signature"
+    assert forwarded_payload["numerator"] == 6
+    assert forwarded_payload["denominator"] == 8
+
+
+@pytest.mark.asyncio
+async def test_get_transport_state_is_not_destructive(mock_send):
+    """``get_transport_state`` is read-only: dry_run is stripped, not previewed."""
+    data = await _call("get_transport_state", dry_run=True)
+
+    # Not in DESTRUCTIVE_TOOLS, so dry_run is ignored (stripped, forwarded).
+    mock_send.assert_called_once()
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "get_transport_state"
+    assert "dry_run" not in forwarded_payload
+    # The response is whatever liveagent_send returned.
+    assert data == {"status": "ok"}

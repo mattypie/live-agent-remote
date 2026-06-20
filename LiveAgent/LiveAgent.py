@@ -145,6 +145,8 @@ class LiveAgent(ControlSurface):
             return {"pong": True, "time": time.time()}
         if command == "get_live_state":
             return self._live_state()
+        if command == "get_transport_state":
+            return self._transport_state()
         if command == "list_tracks":
             return {"tracks": self._track_summaries()}
         if command == "create_midi_track":
@@ -190,6 +192,27 @@ class LiveAgent(ControlSurface):
 
         if command == "inspect_drum_rack":
             return self._inspect_drum_rack(payload)
+
+        if command == "start_playing":
+            return self._start_playing(payload)
+        if command == "stop_playing":
+            return self._stop_playing(payload)
+        if command == "stop_all_clips":
+            return self._stop_all_clips(payload)
+        if command == "set_tempo":
+            return self._set_tempo(payload)
+        if command == "tap_tempo":
+            return self._tap_tempo(payload)
+        if command == "set_time_signature":
+            return self._set_time_signature(payload)
+        if command == "set_metronome":
+            return self._set_metronome(payload)
+        if command == "set_overdub":
+            return self._set_overdub(payload)
+        if command == "launch_scene":
+            return self._launch_scene(payload)
+        if command == "launch_clip":
+            return self._launch_clip(payload)
 
         if command == "begin_undo_step":
             return self._begin_undo_step()
@@ -333,6 +356,113 @@ class LiveAgent(ControlSurface):
             "scenes": [{"index": i, "name": scene.name} for i, scene in enumerate(song.scenes)],
             "selected_track_index": self._track_index(song.view.selected_track),
         }
+
+    # ── Transport & Playback Control ──────────────────────────────
+
+    def _transport_state(self):
+        """Return transport-related state. Uses _safe_attr so that attributes
+        absent on some Live versions are reported as None rather than raising."""
+        song = self.song()
+        return {
+            "tempo": self._safe_attr(song, "tempo", None),
+            "is_playing": self._safe_attr(song, "is_playing", None),
+            "signature_numerator": self._safe_attr(song, "signature_numerator", None),
+            "signature_denominator": self._safe_attr(song, "signature_denominator", None),
+            "metronome": self._safe_attr(song, "metronome", None),
+            "overdub": self._safe_attr(song, "overdub", None),
+            "song_time": self._safe_attr(song, "current_song_time", None),
+        }
+
+    def _start_playing(self, payload):
+        song = self.song()
+        song.start_playing()
+        return {"is_playing": True}
+
+    def _stop_playing(self, payload):
+        song = self.song()
+        song.stop_playing()
+        return {"is_playing": False}
+
+    def _stop_all_clips(self, payload):
+        song = self.song()
+        song.stop_all_clips()
+        return {"stopped_all_clips": True}
+
+    def _set_tempo(self, payload):
+        if "tempo" not in payload:
+            raise Exception("set_tempo requires a 'tempo' parameter (BPM, 20-999)")
+        tempo = float(payload.get("tempo"))
+        if tempo < 20.0 or tempo > 999.0:
+            raise Exception("tempo must be between 20 and 999 BPM, got %s" % tempo)
+        song = self.song()
+        song.tempo = tempo
+        return {"tempo": song.tempo}
+
+    def _tap_tempo(self, payload):
+        song = self.song()
+        song.tap_tempo()
+        return {"tapped": True, "tempo": self._safe_attr(song, "tempo", None)}
+
+    def _set_time_signature(self, payload):
+        song = self.song()
+        updated = {}
+        if "numerator" in payload:
+            numerator = int(payload.get("numerator"))
+            if numerator < 1 or numerator > 16:
+                raise Exception("numerator must be 1-16, got %s" % numerator)
+            song.signature_numerator = numerator
+            updated["signature_numerator"] = song.signature_numerator
+        if "denominator" in payload:
+            denominator = int(payload.get("denominator"))
+            if denominator not in (1, 2, 4, 8, 16):
+                raise Exception("denominator must be 1, 2, 4, 8, or 16, got %s" % denominator)
+            song.signature_denominator = denominator
+            updated["signature_denominator"] = song.signature_denominator
+        if not updated:
+            raise Exception(
+                "set_time_signature requires 'numerator' and/or 'denominator' parameters"
+            )
+        return updated
+
+    def _set_metronome(self, payload):
+        if "enabled" not in payload:
+            raise Exception("set_metronome requires an 'enabled' parameter (bool)")
+        song = self.song()
+        song.metronome = bool(payload.get("enabled"))
+        return {"metronome": self._safe_attr(song, "metronome", None)}
+
+    def _set_overdub(self, payload):
+        if "enabled" not in payload:
+            raise Exception("set_overdub requires an 'enabled' parameter (bool)")
+        song = self.song()
+        song.overdub = bool(payload.get("enabled"))
+        return {"overdub": self._safe_attr(song, "overdub", None)}
+
+    def _launch_scene(self, payload):
+        if "scene_index" not in payload:
+            raise Exception("launch_scene requires a 'scene_index' parameter")
+        song = self.song()
+        scene_index = int(payload.get("scene_index"))
+        scenes = list(song.scenes)
+        if scene_index < 0 or scene_index >= len(scenes):
+            raise Exception(
+                "Scene index out of range: %s (have %s scenes)" % (scene_index, len(scenes))
+            )
+        scene = scenes[scene_index]
+        scene.fire()
+        return {"launched_scene": scene_index, "name": scene.name}
+
+    def _launch_clip(self, payload):
+        track = self._track_by_index(payload.get("track_index", 0))
+        slot_index = int(payload.get("slot_index", 0))
+        clip_slots = list(getattr(track, "clip_slots", []))
+        if slot_index < 0 or slot_index >= len(clip_slots):
+            raise Exception(
+                "Slot index out of range: %s (track has %s slots)" % (slot_index, len(clip_slots))
+            )
+        slot = clip_slots[slot_index]
+        slot.fire()
+        return {"launched_clip": True, "track_index": payload.get("track_index", 0), "slot_index": slot_index}
 
     def _track_summaries(self):
         return [self._track_summary(i, track) for i, track in enumerate(self.song().tracks)]
@@ -1178,26 +1308,48 @@ class LiveAgent(ControlSurface):
         real_name = os.path.basename(os.path.realpath(file_path))
         if real_name not in sample_names:
             sample_names.append(real_name)
+        # Search browser.samples first (factory content)
         browser_item = self._find_browser_item_by_names(browser.samples, sample_names)
 
+        # Fallback: search user_folders (user-added Places folders)
         if browser_item is None:
-            raise Exception(
-                "Could not find sample in Ableton browser: %s. "
-                "Add the folder to Ableton's Places/User Library and let Live index it."
-                % ", ".join(sample_names)
-            )
+            user_folders = self._safe_attr(browser, "user_folders", [])
+            for uf in user_folders:
+                browser_item = self._find_browser_item_by_names(uf, sample_names)
+                if browser_item is not None:
+                    break
 
         temp_track_index = len(song.tracks)
         song.create_midi_track(-1)
         temp_track = song.tracks[temp_track_index]
         temp_track.name = "LiveAgent sample temp"
         song.view.selected_track = temp_track
-        browser.load_item(browser_item)
-        time.sleep(0.5)
+
+        loaded_via_browser = False
+        if browser_item is not None:
+            try:
+                browser.load_item(browser_item)
+                time.sleep(0.5)
+                loaded_via_browser = True
+            except Exception:
+                pass
+
+        if not loaded_via_browser or len(temp_track.devices) == 0:
+            # Fallback: use open_document to load sample directly
+            try:
+                import Live
+                Live.Application.get_application().open_document(file_path)
+                time.sleep(1.0)
+            except Exception:
+                pass
 
         if len(temp_track.devices) == 0:
             song.delete_track(temp_track_index)
-            raise Exception("Loading sample did not create a Simpler device")
+            raise Exception(
+                "Could not load sample: %s. Neither browser.load_item nor open_document succeeded. "
+                "Try expanding the folder in Ableton's browser to trigger indexing."
+                % os.path.basename(file_path)
+            )
 
         new_device = temp_track.devices[0]
 

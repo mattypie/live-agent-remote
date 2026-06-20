@@ -130,39 +130,53 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 
 ### Command Reference
 
+<!-- BEGIN COMMAND TABLE -->
 | Command | Description | Key Parameters |
 |---|---|---|
-| `ping` | Check connection | — |
-| `get_live_state` | Get tempo, tracks, scenes, playing state | — |
-| `list_tracks` | List all tracks with devices and clips | — |
-| `create_midi_track` | Create a new MIDI track | `index` |
-| `create_session_clip` | Create a clip in session view | `track_index`, `slot_index`, `length_beats`, `name` |
-| `write_midi_notes` | Write MIDI notes to a clip | `track_index`, `slot_index`, `notes[]` |
-| `read_clip_notes` | Read notes from a clip | `track_index`, `slot_index` |
-| `clear_clip_notes` | Delete all notes in a clip | `track_index`, `slot_index` |
-| `list_devices` | List devices on a track | `track_index` |
-| `set_parameter_value` | Set a device parameter | `track_index`, `device_index/name`, `parameter_index/name`, `value` |
-| `write_clip_automation` | Write automation envelope | `track_index`, `slot_index`, `device_*`, `parameter_*`, `points[]` |
-| `load_device` | Load a plugin onto a track | `track_index`, `device_name`, `browser_type` |
-| `list_browser_devices` | Search/list available plugins | `browser_type`, `query`, `max_results` |
-| `create_audio_track` | Create a new audio track | `index` |
-| `import_audio_clip` | Import audio file to track slot | `track_index`, `slot_index`, `file_path` |
-| `get_clip_info` | Get clip details (name, type, loop, warp) | `track_index`, `slot_index` |
-| `set_clip_properties` | Set clip name, color, loop, pitch, gain | `track_index`, `slot_index`, `name`, `color`, etc. |
-| `duplicate_clip` | Copy clip to another slot | `track_index`, `slot_index`, `dest_*` |
-| `delete_clip` | Remove clip from slot | `track_index`, `slot_index` |
-| `set_clip_warp` | Set warp on/off and warp mode | `track_index`, `slot_index`, `warping`, `warp_mode` |
-| `analyze_and_warp` | Auto-warp with BPM/key from analyzer | `track_index`, `slot_index`, `bpm`, `key`, `warp_mode` |
-| `analyze_audio_file` | Analyze audio file for BPM, key, beats | `file_path` |
-| `detect_pitch` | Detect pitch of one-shot sample | `file_path` |
-| `analyze_folder` | Batch analyze folder, sort by pitch | `folder_path`, `mode` |
-| `find_compatible_samples` | Find samples matching target key (Camelot) | `folder_path`, `target_key`, `mode` |
-| `create_smart_folder` | Smart folder of compatible samples in Ableton browser | `target_key`, `categories`, `base_path` |
-| `create_drum_rack` | Create Drum Rack on a MIDI track | `track_index`, `name` |
-| `load_sample_to_pad` | Load sample onto Drum Rack pad | `track_index`, `pad_index`, `file_path`, `drum_rack_index` |
-| `inspect_drum_rack` | Inspect Drum Rack pad structure (debug) | `track_index`, `drum_rack_index`, `pad_range` |
-| `eval` | Evaluate Python expression in Live context | `expr` |
-| `exec` | Execute Python statement in Live context | `stmt` |
+| `ping` | Check if Ableton Live is connected and responding via LiveAgent | — |
+| `get_live_state` | Get the full state of Ableton Live: tempo, tracks, scenes, playing status, selected track | — |
+| `list_tracks` | List all tracks in the current Ableton Live set with their devices, clips, and settings | — |
+| `get_transport_state` | Get transport state: tempo, playing status, time signature, metronome, overdub | — |
+| `start_playing` | Start playback of the Ableton Live transport | — |
+| `stop_playing` | Stop playback of the Ableton Live transport | — |
+| `stop_all_clips` | Stop all currently playing clips in the session view | — |
+| `set_tempo` | Set the project tempo (BPM) | `tempo`* (number) |
+| `tap_tempo` | Tap the tempo. Call repeatedly in rhythm to set the tempo by tapping | — |
+| `set_time_signature` | Set the time signature (e.g. 4/4, 3/4, 6/8) | `denominator` (integer), `numerator` (integer) |
+| `set_metronome` | Turn the metronome on or off | `enabled`* (boolean) |
+| `set_overdub` | Enable or disable MIDI overdub recording (new notes added without replacing existing) | `enabled`* (boolean) |
+| `launch_scene` | Launch (fire) a scene in session view, starting all clips in that row | `scene_index`* (integer) |
+| `launch_clip` | Launch (fire) a clip in a specific track and session slot | `slot_index`* (integer), `track_index`* (integer) |
+| `create_midi_track` | Create a new MIDI track in Ableton Live | `index` (integer) |
+| `create_session_clip` | Create a new MIDI clip in session view on a specific track and slot | `length_beats` (number), `name` (string), `replace` (boolean), `slot_index`* (integer), `track_index`* (integer) |
+| `write_midi_notes` | Write MIDI notes to a clip. Notes are specified as an array of {pitch, start, duration, velocity} | `notes`* (array), `slot_index`* (integer), `track_index`* (integer) |
+| `read_clip_notes` | Read all MIDI notes from a clip | `length_beats` (number), `slot_index`* (integer), `track_index`* (integer) |
+| `clear_clip_notes` | Clear all notes from a MIDI clip | `slot_index`* (integer), `track_index`* (integer) |
+| `list_devices` | List all devices (plugins, built-in effects) on a track with their parameters | `track_index`* (integer) |
+| `set_parameter_value` | Set a parameter value on a device. Identify device/parameter by index or name | `device_index` (integer), `device_name` (string), `parameter_index` (integer), `parameter_name` (string), `track_index`* (integer), `value`* (number) |
+| `write_clip_automation` | Write automation envelope points to a clip for a specific device parameter | `device_index` (integer), `device_name` (string), `parameter_index` (integer), `parameter_name` (string), `points`* (array), `slot_index`* (integer), `step_duration` (number), `track_index`* (integer) |
+| `load_device` | Load a plugin/device onto a track by searching Ableton's browser. Supports VST/AU plugins, built-... | `browser_type` (string), `device_name`* (string), `track_index`* (integer) |
+| `list_browser_devices` | Search and list available devices/plugins from Ableton's browser. Use this to find what's install... | `browser_type` (string), `max_results` (integer), `query` (string) |
+| `create_audio_track` | Create a new audio track in Ableton Live | `index` (integer) |
+| `import_audio_clip` | Import an audio file (wav, aiff, mp3, etc.) into a track slot. The file must exist on disk | `file_path`* (string), `slot_index`* (integer), `track_index`* (integer) |
+| `get_clip_info` | Get detailed info about a clip: name, type (audio/MIDI), loop settings, warp, pitch, gain, file p... | `slot_index`* (integer), `track_index`* (integer) |
+| `set_clip_properties` | Set clip properties: name, color, loop start/end, start/end markers, pitch, gain | `color` (integer), `end_marker` (number), `gain` (number), `loop_end` (number), `loop_start` (number), `looping` (boolean), `name` (string), `pitch_coarse` (integer), `pitch_fine` (number), `slot_index`* (integer), `start_marker` (number), `track_index`* (integer) |
+| `duplicate_clip` | Duplicate a clip to another slot (same or different track) | `dest_slot_index` (integer), `dest_track_index` (integer), `slot_index`* (integer), `track_index`* (integer) |
+| `delete_clip` | Delete a clip from a track slot | `slot_index`* (integer), `track_index`* (integer) |
+| `set_clip_warp` | Set warp properties on an audio clip. Warp modes: 0=beats, 1=tones, 2=texture, 3=re-pitch, 4=comp... | `slot_index`* (integer), `track_index`* (integer), `warp_mode` (integer), `warping` (boolean) |
+| `analyze_and_warp` | Analyze an audio clip for BPM and key, then auto-set warp markers. Pass detected BPM and key from... | `bpm` (number), `key` (string), `slot_index`* (integer), `track_index`* (integer), `warp_mode` (integer) |
+| `analyze_audio_file` | Analyze an audio file on disk for BPM, musical key, duration, and beat positions. Uses librosa fo... | `file_path`* (string) |
+| `detect_pitch` | Detect the fundamental pitch of a one-shot audio sample (kick, snare, etc). Returns note name, fr... | `file_path`* (string) |
+| `analyze_folder` | Analyze all audio files in a folder for BPM, key, pitch, and sample type (oneshot/loop classifica... | `folder_path`* (string), `mode` (string), `sample_type` (string) |
+| `find_compatible_samples` | Find samples in a folder that are harmonically compatible with a target key using the Camelot Whe... | `folder_path`* (string), `mode` (string), `target_key`* (string) |
+| `create_smart_folder` | Create a smart folder in Ableton's browser with symlinks to samples that are harmonically compati... | `base_path` (string), `categories` (array), `target_key`* (string) |
+| `create_drum_rack` | Create a MIDI track with a usable Drum Rack. By default loads 808 Core Kit.adg so pads 36-51 alre... | `empty` (boolean), `kit_name` (string), `name` (string), `track_index` (integer) |
+| `load_sample_to_pad` | Load a browser-indexed sample file onto a Drum Rack pad by loading it as a Simpler then moving it... | `drum_rack_index` (integer), `file_path`* (string), `pad_index`* (integer), `reset_effects` (boolean), `track_index`* (integer) |
+| `inspect_drum_rack` | Inspect a Drum Rack's pad structure. Returns pad names, active state, chain devices, and sample f... | `drum_rack_index` (integer), `pad_range` (array), `track_index`* (integer) |
+| `eval` | Evaluate a Python expression in LiveAgent's Ableton Live context. Returns the result. Available v... | `expr`* (string) |
+| `exec` | Execute a Python statement in LiveAgent's Ableton Live context. Available variables: Live, song, ... | `stmt`* (string) |
+| `batch` | Execute multiple LiveAgent commands as a single undo step. All operations can be undone with one ... | `commands`* (array) |
+<!-- END COMMAND TABLE -->
 
 ### Note Format
 
@@ -279,7 +293,7 @@ python3 -m venv .venv
 }
 ```
 
-3. Restart your MCP client. All 31 commands are now available as tools!
+3. Restart your MCP client. All 43 commands are now available as tools!
 
 ---
 
@@ -350,6 +364,17 @@ client.close()
 | `ping` | 接続確認 |
 | `get_live_state` | テンポ・トラック・シーン・再生状態を取得 |
 | `list_tracks` | 全トラック情報を取得 |
+| `get_transport_state` | トランスポート状態取得（テンポ・拍子・メトロノーム等） |
+| `start_playing` | 再生開始 |
+| `stop_playing` | 再生停止 |
+| `stop_all_clips` | 全クリップ停止 |
+| `set_tempo` | テンポ（BPM）設定 |
+| `tap_tempo` | タップテンポ |
+| `set_time_signature` | 拍子記号設定 |
+| `set_metronome` | メトロノームON/OFF |
+| `set_overdub` | オーバーダブON/OFF |
+| `launch_scene` | シーンを起動（その行のクリップを再生） |
+| `launch_clip` | クリップを起動 |
 | `create_midi_track` | MIDIトラック作成 |
 | `create_session_clip` | セッションビューにクリップ作成 |
 | `write_midi_notes` | クリップにMIDIノート書き込み |
@@ -427,7 +452,7 @@ python3 -m venv .venv
 }
 ```
 
-3. MCPクライアントを再起動。全31コマンドがツールとして利用可能！
+3. MCPクライアントを再起動。全43コマンドがツールとして利用可能！
 
 ---
 
@@ -475,6 +500,17 @@ client.close()
 | `ping` | 连接检查 |
 | `get_live_state` | 获取速度、轨道、场景、播放状态 |
 | `list_tracks` | 列出所有轨道 |
+| `get_transport_state` | 获取传输状态（速度、拍号、节拍器等） |
+| `start_playing` | 开始播放 |
+| `stop_playing` | 停止播放 |
+| `stop_all_clips` | 停止所有剪辑 |
+| `set_tempo` | 设置速度（BPM） |
+| `tap_tempo` | 敲击速度 |
+| `set_time_signature` | 设置拍号 |
+| `set_metronome` | 节拍器开关 |
+| `set_overdub` | 叠录开关 |
+| `launch_scene` | 启动场景（播放该行所有剪辑） |
+| `launch_clip` | 启动剪辑 |
 | `create_midi_track` | 创建MIDI轨道 |
 | `create_session_clip` | 创建Session剪辑 |
 | `write_midi_notes` | 写入MIDI音符 |
@@ -552,7 +588,7 @@ python3 -m venv .venv
 }
 ```
 
-3. 重启MCP客户端，全部31个命令即可作为工具使用！
+3. 重启MCP客户端，全部43个命令即可作为工具使用！
 
 ---
 
@@ -600,6 +636,17 @@ client.close()
 | `ping` | 연결 확인 |
 | `get_live_state` | 템포, 트랙, 씬, 재생 상태 가져오기 |
 | `list_tracks` | 모든 트랙 나열 |
+| `get_transport_state` | 트랜스포트 상태 가져오기 (템포, 박자, 메트로놈 등) |
+| `start_playing` | 재생 시작 |
+| `stop_playing` | 재생 중지 |
+| `stop_all_clips` | 모든 클립 중지 |
+| `set_tempo` | 템포(BPM) 설정 |
+| `tap_tempo` | 탭 템포 |
+| `set_time_signature` | 박자표 설정 |
+| `set_metronome` | 메트로놈 켜기/끄기 |
+| `set_overdub` | 오버더빙 켜기/끄기 |
+| `launch_scene` | 씬 실행 (해당 행의 모든 클립 재생) |
+| `launch_clip` | 클립 실행 |
 | `create_midi_track` | MIDI 트랙 생성 |
 | `create_session_clip` | 세션 클립 생성 |
 | `write_midi_notes` | MIDI 노트 쓰기 |
@@ -654,7 +701,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-**Claude Desktop** 설정에 추가 후 재시작하면 31개 명령을 도구로 사용할 수 있습니다!
+**Claude Desktop** 설정에 추가 후 재시작하면 43개 명령을 도구로 사용할 수 있습니다!
 
 ---
 
@@ -695,6 +742,17 @@ client.close()
 | `ping` | Verificar conexión |
 | `get_live_state` | Obtener tempo, pistas, escenas, estado de reproducción |
 | `list_tracks` | Listar todas las pistas |
+| `get_transport_state` | Obtener estado del transporte (tempo, compás, metrónomo) |
+| `start_playing` | Iniciar reproducción |
+| `stop_playing` | Detener reproducción |
+| `stop_all_clips` | Detener todos los clips |
+| `set_tempo` | Establecer tempo (BPM) |
+| `tap_tempo` | Tactear tempo |
+| `set_time_signature` | Establecer compás |
+| `set_metronome` | Activar/desactivar metrónomo |
+| `set_overdub` | Activar/desactivar overdub |
+| `launch_scene` | Lanzar escena (reproduce todos los clips de esa fila) |
+| `launch_clip` | Lanzar clip |
 | `create_midi_track` | Crear pista MIDI |
 | `create_session_clip` | Crear clip en vista de sesión |
 | `write_midi_notes` | Escribir notas MIDI |
@@ -749,7 +807,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 31 comandos como herramientas!
+¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 43 comandos como herramientas!
 
 ---
 
@@ -790,6 +848,17 @@ client.close()
 | `ping` | Vérifier la connexion |
 | `get_live_state` | Tempo, pistes, scènes, état de lecture |
 | `list_tracks` | Lister toutes les pistes |
+| `get_transport_state` | Obtenir l'état du transport (tempo, signature, métronome) |
+| `start_playing` | Démarrer la lecture |
+| `stop_playing` | Arrêter la lecture |
+| `stop_all_clips` | Arrêter tous les clips |
+| `set_tempo` | Définir le tempo (BPM) |
+| `tap_tempo` | Taper le tempo |
+| `set_time_signature` | Définir la signature rythmique |
+| `set_metronome` | Activer/désactiver le métronome |
+| `set_overdub` | Activer/désactiver l'overdub |
+| `launch_scene` | Lancer une scène (lance tous les clips de la ligne) |
+| `launch_clip` | Lancer un clip |
 | `create_midi_track` | Créer une piste MIDI |
 | `create_session_clip` | Créer un clip en vue session |
 | `write_midi_notes` | Écrire des notes MIDI |
@@ -844,7 +913,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 31 commandes comme outils !
+Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 43 commandes comme outils !
 
 ---
 

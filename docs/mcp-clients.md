@@ -279,32 +279,20 @@ Most MCP clients follow the same JSON schema:
 
 ---
 
-## Available Tools (31)
+## Available Tools (43)
 
 Once connected, the following tools are exposed:
 
-**Session & State:**
-`ping`, `get_live_state`, `list_tracks`, `eval`, `exec`, `batch`
-
-**MIDI:**
-`create_midi_track`, `create_session_clip`, `write_midi_notes`,
-`read_clip_notes`, `clear_clip_notes`
-
-**Devices:**
-`list_devices`, `set_parameter_value`, `write_clip_automation`,
-`load_device`, `list_browser_devices`
-
-**Audio Clips:**
-`create_audio_track`, `import_audio_clip`, `get_clip_info`,
-`set_clip_properties`, `duplicate_clip`, `delete_clip`, `set_clip_warp`,
-`analyze_and_warp`
-
-**Drum Rack:**
-`create_drum_rack`, `load_sample_to_pad`, `inspect_drum_rack`
-
-**Audio Analysis (standalone, no Ableton required):**
-`analyze_audio_file`, `detect_pitch`, `analyze_folder`,
-`find_compatible_samples`, `create_smart_folder`
+<!-- BEGIN TOOL GROUPS -->
+- **Session & State:** `ping`, `get_live_state`, `list_tracks`, `get_transport_state`
+- **Transport:** `start_playing`, `stop_playing`, `stop_all_clips`, `set_tempo`, `tap_tempo`, `set_time_signature`, `set_metronome`, `set_overdub`, `launch_scene`, `launch_clip`
+- **MIDI:** `create_midi_track`, `create_session_clip`, `write_midi_notes`, `read_clip_notes`, `clear_clip_notes`
+- **Devices & Parameters:** `list_devices`, `set_parameter_value`, `write_clip_automation`, `load_device`, `list_browser_devices`
+- **Audio Clips:** `create_audio_track`, `import_audio_clip`, `get_clip_info`, `set_clip_properties`, `duplicate_clip`, `delete_clip`, `set_clip_warp`, `analyze_and_warp`
+- **Audio Analysis (standalone, no Live needed):** `analyze_audio_file`, `detect_pitch`, `analyze_folder`, `find_compatible_samples`, `create_smart_folder`
+- **Drum Rack:** `create_drum_rack`, `load_sample_to_pad`, `inspect_drum_rack`
+- **Advanced / Batching:** `batch`, `eval`, `exec`
+<!-- END TOOL GROUPS -->
 
 All tools are prefixed with `mcp_liveagent_` in most clients (e.g.,
 `mcp_liveagent_ping`, `mcp_liveagent_write_midi_notes`).

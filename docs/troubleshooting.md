@@ -17,6 +17,7 @@ Common issues and their solutions. If your problem isn't listed here, check the
 7. [macOS Permissions for Ableton](#7-macos-permissions-for-ableton)
 8. [MCP Server Not Starting](#8-mcp-server-not-starting)
 9. [eval / exec Return "Disabled"](#9-eval--exec-return-disabled)
+10. [Transport Commands Have No Effect](#10-transport-commands-have-no-effect)
 
 ---
 
@@ -516,3 +517,57 @@ Then verify in the LiveAgent log (check Ableton's `Log.txt`) that it reports
 
 > **⚠️ Only enable this on trusted machines.** See the
 > [Security Model](security.md) for the implications.
+
+---
+
+## 10. Transport Commands Have No Effect
+
+### Symptom
+
+`set_tempo`, `start_playing`, `launch_scene`, `launch_clip`, or other transport
+commands return `{"ok": true, ...}` but nothing changes in Ableton — the tempo
+stays the same, playback doesn't start, or the clip doesn't fire.
+
+### Causes & Solutions
+
+**Cause A — Tempo out of range.**
+`set_tempo` rejects values outside 20–999 BPM. Check the returned error:
+
+```
+tempo must be between 20 and 999 BPM, got 1500
+```
+Fix: pass a valid BPM value, e.g. `set_tempo(tempo=124)`.
+
+**Cause B — Scene index out of range.**
+`launch_scene` fires a scene by index. If the index exceeds the number of
+scenes, you'll get:
+```
+Scene index out of range: 5 (have 3 scenes)
+```
+Fix: call `get_live_state` first to see how many scenes exist, or create more
+scenes. Note that `launch_clip` does **not** auto-create scenes (unlike
+`create_session_clip`); the target slot must already exist.
+
+**Cause C — Clip slot is empty.**
+`launch_clip` fires whatever is in the slot. If the slot has no clip, nothing
+plays (this is not an error in Ableton — empty slots simply don't fire).
+Fix: verify the slot has a clip with `get_clip_info` before launching.
+
+**Cause D — Playing but no sound (track not armed / monitoring off).**
+`start_playing` starts the transport, but a MIDI track won't produce sound
+unless it's armed for recording or has monitoring set to "In". This is
+Ableton's normal behavior, not a LiveAgent issue.
+Fix: arm the track in Ableton, or set its monitoring state. (Mixer/arm
+control commands are planned — see the roadmap.)
+
+### Verification
+
+After any transport command, call `get_transport_state` to confirm the change
+took effect:
+
+```python
+client.set_tempo(120)
+print(client.get_transport_state())
+# {'tempo': 120.0, 'is_playing': False, ...}
+```
+

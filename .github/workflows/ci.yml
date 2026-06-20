@@ -26,5 +26,8 @@ jobs:
       - name: Lint with ruff
         run: ruff check .
 
+      - name: Check docs are up to date
+        run: python tools/generate_docs.py --check
+
       - name: Run tests
         run: pytest -v

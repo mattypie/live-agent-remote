@@ -75,10 +75,115 @@ def liveagent_send(command: str, payload: dict | None = None) -> dict:
 
 app = Server("ableton-live-agent")
 
+# Dry-run schema fragment. Auto-injected into every tool whose name appears
+# in DESTRUCTIVE_TOOLS below, so dry_run no longer needs to be hand-written
+# in each tool's inputSchema (see _inject_dry_run).
+DRY_RUN_SCHEMA = {
+    "type": "boolean",
+    "description": "If true, return what would happen without executing. Use to preview destructive operations before running them.",
+    "default": False,
+}
 
-@app.list_tools()
-async def list_tools() -> list[Tool]:
-    return [
+# Registry of destructive tools and their dry-run preview lambdas.
+# Membership here has two effects:
+#   1. call_tool() intercepts dry_run=True for these names (preview only).
+#   2. _inject_dry_run() adds the dry_run property to their inputSchema.
+DESTRUCTIVE_TOOLS = {
+    "delete_clip": lambda a: {
+        "would_do": "Delete clip",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "clear_clip_notes": lambda a: {
+        "would_do": "Clear all MIDI notes from clip",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "set_parameter_value": lambda a: {
+        "would_do": f"Set parameter value to {a.get('value')}",
+        "target": f"Track {a.get('track_index')} / Device {a.get('device_index', a.get('device_name', '?'))} / Param {a.get('parameter_index', a.get('parameter_name', '?'))}",
+    },
+    "load_device": lambda a: {
+        "would_do": f"Load device '{a.get('device_name')}'",
+        "target": f"Track {a.get('track_index')} ({a.get('browser_type', 'plug-in')})",
+    },
+    "load_sample_to_pad": lambda a: {
+        "would_do": f"Load sample to pad {a.get('pad_index')}",
+        "target": f"Track {a.get('track_index')} / Pad {a.get('pad_index')} / {a.get('file_path', '?')}",
+    },
+    "set_clip_properties": lambda a: {
+        "would_do": "Set clip properties",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "set_clip_warp": lambda a: {
+        "would_do": "Set clip warp properties",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')} warping={a.get('warping')} mode={a.get('warp_mode')}",
+    },
+    "write_midi_notes": lambda a: {
+        "would_do": f"Write {len(a.get('notes', []))} MIDI notes",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "write_clip_automation": lambda a: {
+        "would_do": f"Write {len(a.get('points', []))} automation points",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    # ── Transport (destructive: they change playback/tempo/signature) ──
+    "stop_all_clips": lambda a: {
+        "would_do": "Stop all playing clips",
+        "target": "All tracks",
+    },
+    "set_tempo": lambda a: {
+        "would_do": f"Set tempo to {a.get('tempo')} BPM",
+        "target": "Global transport",
+    },
+    "tap_tempo": lambda a: {
+        "would_do": "Tap tempo",
+        "target": "Global transport",
+    },
+    "set_time_signature": lambda a: {
+        "would_do": f"Set time signature to {a.get('numerator', '?')}/{a.get('denominator', '?')}",
+        "target": "Global transport",
+    },
+    "set_metronome": lambda a: {
+        "would_do": f"Set metronome to {a.get('enabled')}",
+        "target": "Global transport",
+    },
+    "set_overdub": lambda a: {
+        "would_do": f"Set overdub to {a.get('enabled')}",
+        "target": "Global transport",
+    },
+    "launch_scene": lambda a: {
+        "would_do": f"Launch scene {a.get('scene_index')}",
+        "target": f"Scene {a.get('scene_index')}",
+    },
+    "launch_clip": lambda a: {
+        "would_do": f"Launch clip in Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
+    },
+    "batch": lambda a: {
+        "would_do": f"Execute {len(a.get('commands', []))} commands as single undo step",
+        "target": ", ".join(c.get("command", "?") for c in a.get("commands", [])),
+    },
+}
+
+
+def _inject_dry_run(tools: list[Tool]) -> list[Tool]:
+    """Add the dry_run property to the inputSchema of every destructive tool.
+
+    This keeps dry_run declared in exactly one place (DESTRUCTIVE_TOOLS
+    membership) instead of being hand-written in each tool's schema.
+    """
+    for tool in tools:
+        if tool.name in DESTRUCTIVE_TOOLS:
+            schema = tool.inputSchema or {"type": "object"}
+            props = dict(schema.get("properties") or {})
+            props.setdefault("dry_run", DRY_RUN_SCHEMA)
+            schema = {**schema, "properties": props}
+            tool.inputSchema = schema
+    return tools
+
+
+def _build_tools() -> list[Tool]:
+    """Define all MCP tools. dry_run is auto-injected by _inject_dry_run."""
+    tools = [
         Tool(
             name="ping",
             description="Check if Ableton Live is connected and responding via LiveAgent.",
@@ -93,6 +198,99 @@ async def list_tools() -> list[Tool]:
             name="list_tracks",
             description="List all tracks in the current Ableton Live set with their devices, clips, and settings.",
             inputSchema={"type": "object", "properties": {}},
+        ),
+        # ── Transport & Playback ──
+        Tool(
+            name="get_transport_state",
+            description="Get transport state: tempo, playing status, time signature, metronome, overdub.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="start_playing",
+            description="Start playback of the Ableton Live transport.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="stop_playing",
+            description="Stop playback of the Ableton Live transport.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="stop_all_clips",
+            description="Stop all currently playing clips in the session view.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="set_tempo",
+            description="Set the project tempo (BPM).",
+            inputSchema={
+                "type": "object",
+                "required": ["tempo"],
+                "properties": {
+                    "tempo": {"type": "number", "description": "Tempo in BPM (20-999)"},
+                },
+            },
+        ),
+        Tool(
+            name="tap_tempo",
+            description="Tap the tempo. Call repeatedly in rhythm to set the tempo by tapping.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="set_time_signature",
+            description="Set the time signature (e.g. 4/4, 3/4, 6/8).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "numerator": {"type": "integer", "description": "Beats per bar (1-16)"},
+                    "denominator": {"type": "integer", "description": "Note value (1, 2, 4, 8, or 16)"},
+                },
+            },
+        ),
+        Tool(
+            name="set_metronome",
+            description="Turn the metronome on or off.",
+            inputSchema={
+                "type": "object",
+                "required": ["enabled"],
+                "properties": {
+                    "enabled": {"type": "boolean", "description": "True to enable, False to disable"},
+                },
+            },
+        ),
+        Tool(
+            name="set_overdub",
+            description="Enable or disable MIDI overdub recording (new notes added without replacing existing).",
+            inputSchema={
+                "type": "object",
+                "required": ["enabled"],
+                "properties": {
+                    "enabled": {"type": "boolean", "description": "True to enable overdub, False to disable"},
+                },
+            },
+        ),
+        Tool(
+            name="launch_scene",
+            description="Launch (fire) a scene in session view, starting all clips in that row.",
+            inputSchema={
+                "type": "object",
+                "required": ["scene_index"],
+                "properties": {
+                    "scene_index": {"type": "integer", "description": "Scene index to launch (0-based)"},
+                },
+            },
+        ),
+        Tool(
+            name="launch_clip",
+            description="Launch (fire) a clip in a specific track and session slot.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "slot_index"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "slot_index": {"type": "integer", "description": "Session slot/scene index (0-based)"},
+                },
+            },
         ),
         Tool(
             name="create_midi_track",
@@ -146,7 +344,6 @@ async def list_tools() -> list[Tool]:
                             },
                         },
                     },
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -172,7 +369,6 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "track_index": {"type": "integer"},
                     "slot_index": {"type": "integer"},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -200,7 +396,6 @@ async def list_tools() -> list[Tool]:
                     "parameter_index": {"type": "integer", "description": "Parameter index"},
                     "parameter_name": {"type": "string", "description": "Parameter name (alternative to index)"},
                     "value": {"type": "number", "description": "New parameter value"},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -228,7 +423,6 @@ async def list_tools() -> list[Tool]:
                         },
                     },
                     "step_duration": {"type": "number", "description": "Step duration in beats (default 0.25)", "default": 0.25},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -246,7 +440,6 @@ async def list_tools() -> list[Tool]:
                         "description": "Browser category: 'plug-in', 'instrument', 'audio_effect', 'midi_effect'",
                         "default": "plug-in",
                     },
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -332,7 +525,6 @@ async def list_tools() -> list[Tool]:
                     "pitch_coarse": {"type": "integer", "description": "Pitch transpose (semitones, audio only)"},
                     "pitch_fine": {"type": "number", "description": "Fine pitch (cents, audio only)"},
                     "gain": {"type": "number", "description": "Clip gain (audio only)"},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -359,7 +551,6 @@ async def list_tools() -> list[Tool]:
                 "properties": {
                     "track_index": {"type": "integer"},
                     "slot_index": {"type": "integer"},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -374,7 +565,6 @@ async def list_tools() -> list[Tool]:
                     "slot_index": {"type": "integer"},
                     "warping": {"type": "boolean", "description": "Enable/disable warp"},
                     "warp_mode": {"type": "integer", "description": "0=beats, 1=tones, 2=texture, 3=re-pitch, 4=complex, 5=complex pro"},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -480,7 +670,6 @@ async def list_tools() -> list[Tool]:
                     "file_path": {"type": "string", "description": "Absolute path to a sample file that Ableton Browser can find/index"},
                     "drum_rack_index": {"type": "integer", "description": "Device index of Drum Rack (default: 0)", "default": 0},
                     "reset_effects": {"type": "boolean", "description": "Delete all devices in the pad chain before moving the new Simpler. If false, only the first instrument device is replaced and later effects are kept.", "default": False},
-                    "dry_run": {"type": "boolean", "description": "If true, preview without executing.", "default": False},
                 },
             },
         ),
@@ -543,62 +732,17 @@ async def list_tools() -> list[Tool]:
                             },
                         },
                     },
-                    "dry_run": {"type": "boolean", "description": "If true, preview all commands without executing.", "default": False},
                 },
             },
         ),
     ]
+    return _inject_dry_run(tools)
 
 
-# ── Dry Run Support ──────────────────────────────────────────────
-DESTRUCTIVE_TOOLS = {
-    "delete_clip": lambda a: {
-        "would_do": "Delete clip",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
-    },
-    "clear_clip_notes": lambda a: {
-        "would_do": "Clear all MIDI notes from clip",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
-    },
-    "set_parameter_value": lambda a: {
-        "would_do": f"Set parameter value to {a.get('value')}",
-        "target": f"Track {a.get('track_index')} / Device {a.get('device_index', a.get('device_name', '?'))} / Param {a.get('parameter_index', a.get('parameter_name', '?'))}",
-    },
-    "load_device": lambda a: {
-        "would_do": f"Load device '{a.get('device_name')}'",
-        "target": f"Track {a.get('track_index')} ({a.get('browser_type', 'plug-in')})",
-    },
-    "load_sample_to_pad": lambda a: {
-        "would_do": f"Load sample to pad {a.get('pad_index')}",
-        "target": f"Track {a.get('track_index')} / Pad {a.get('pad_index')} / {a.get('file_path', '?')}",
-    },
-    "set_clip_properties": lambda a: {
-        "would_do": "Set clip properties",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
-    },
-    "set_clip_warp": lambda a: {
-        "would_do": "Set clip warp properties",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')} warping={a.get('warping')} mode={a.get('warp_mode')}",
-    },
-    "write_midi_notes": lambda a: {
-        "would_do": f"Write {len(a.get('notes', []))} MIDI notes",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
-    },
-    "write_clip_automation": lambda a: {
-        "would_do": f"Write {len(a.get('points', []))} automation points",
-        "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
-    },
-    "batch": lambda a: {
-        "would_do": f"Execute {len(a.get('commands', []))} commands as single undo step",
-        "target": ", ".join(c.get("command", "?") for c in a.get("commands", [])),
-    },
-}
-
-DRY_RUN_SCHEMA = {
-    "type": "boolean",
-    "description": "If true, return what would happen without executing. Use to preview destructive operations before running them.",
-    "default": False,
-}
+@app.list_tools()
+async def list_tools() -> list[Tool]:
+    """Return all MCP tools with dry_run auto-injected for destructive ones."""
+    return _build_tools()
 
 
 @app.call_tool()

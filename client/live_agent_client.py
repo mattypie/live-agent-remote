@@ -59,6 +59,46 @@ class LiveAgentClient:
     def list_tracks(self):
         return self._send("list_tracks")
 
+    # ── Transport & Playback ───────────────────────────────────
+
+    def get_transport_state(self):
+        return self._send("get_transport_state")
+
+    def start_playing(self):
+        return self._send("start_playing")
+
+    def stop_playing(self):
+        return self._send("stop_playing")
+
+    def stop_all_clips(self):
+        return self._send("stop_all_clips")
+
+    def set_tempo(self, tempo):
+        return self._send("set_tempo", {"tempo": tempo})
+
+    def tap_tempo(self):
+        return self._send("tap_tempo")
+
+    def set_time_signature(self, numerator=None, denominator=None):
+        payload = {}
+        if numerator is not None:
+            payload["numerator"] = numerator
+        if denominator is not None:
+            payload["denominator"] = denominator
+        return self._send("set_time_signature", payload)
+
+    def set_metronome(self, enabled):
+        return self._send("set_metronome", {"enabled": enabled})
+
+    def set_overdub(self, enabled):
+        return self._send("set_overdub", {"enabled": enabled})
+
+    def launch_scene(self, scene_index):
+        return self._send("launch_scene", {"scene_index": scene_index})
+
+    def launch_clip(self, track_index, slot_index):
+        return self._send("launch_clip", {"track_index": track_index, "slot_index": slot_index})
+
     def create_midi_track(self, index=-1):
         return self._send("create_midi_track", {"index": index})
 
