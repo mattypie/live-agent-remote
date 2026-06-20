@@ -99,6 +99,34 @@ class LiveAgentClient:
     def launch_clip(self, track_index, slot_index):
         return self._send("launch_clip", {"track_index": track_index, "slot_index": slot_index})
 
+    # ── Mixer ──────────────────────────────────────────────────
+
+    def set_track_volume(self, track_index, volume):
+        return self._send("set_track_volume", {"track_index": track_index, "volume": volume})
+
+    def set_track_pan(self, track_index, pan):
+        return self._send("set_track_pan", {"track_index": track_index, "pan": pan})
+
+    def set_track_mute(self, track_index, mute):
+        return self._send("set_track_mute", {"track_index": track_index, "mute": mute})
+
+    def set_track_solo(self, track_index, solo):
+        return self._send("set_track_solo", {"track_index": track_index, "solo": solo})
+
+    def set_track_arm(self, track_index, arm):
+        return self._send("set_track_arm", {"track_index": track_index, "arm": arm})
+
+    def set_track_send(self, track_index, send_index, value):
+        return self._send("set_track_send", {
+            "track_index": track_index, "send_index": send_index, "value": value,
+        })
+
+    def set_track_monitoring(self, track_index, monitoring):
+        return self._send("set_track_monitoring", {"track_index": track_index, "monitoring": monitoring})
+
+    def set_crossfader(self, position):
+        return self._send("set_crossfader", {"position": position})
+
     def create_midi_track(self, index=-1):
         return self._send("create_midi_track", {"index": index})
 

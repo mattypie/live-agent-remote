@@ -93,6 +93,62 @@ class LiveAgentClient {
     });
   }
 
+  // ── Mixer ──────────────────────────────────────────────
+
+  setTrackVolume(opts) {
+    return this._send('set_track_volume', {
+      track_index: opts.trackIndex,
+      volume: opts.volume,
+    });
+  }
+
+  setTrackPan(opts) {
+    return this._send('set_track_pan', {
+      track_index: opts.trackIndex,
+      pan: opts.pan,
+    });
+  }
+
+  setTrackMute(opts) {
+    return this._send('set_track_mute', {
+      track_index: opts.trackIndex,
+      mute: opts.mute,
+    });
+  }
+
+  setTrackSolo(opts) {
+    return this._send('set_track_solo', {
+      track_index: opts.trackIndex,
+      solo: opts.solo,
+    });
+  }
+
+  setTrackArm(opts) {
+    return this._send('set_track_arm', {
+      track_index: opts.trackIndex,
+      arm: opts.arm,
+    });
+  }
+
+  setTrackSend(opts) {
+    return this._send('set_track_send', {
+      track_index: opts.trackIndex,
+      send_index: opts.sendIndex,
+      value: opts.value,
+    });
+  }
+
+  setTrackMonitoring(opts) {
+    return this._send('set_track_monitoring', {
+      track_index: opts.trackIndex,
+      monitoring: opts.monitoring,
+    });
+  }
+
+  setCrossfader(position) {
+    return this._send('set_crossfader', { position });
+  }
+
   createSessionClip(opts) {
     return this._send('create_session_clip', {
       track_index: opts.trackIndex,

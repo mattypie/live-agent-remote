@@ -61,6 +61,16 @@ TOOL_GROUPS: list[tuple[str, list[str]]] = [
         "launch_scene",
         "launch_clip",
     ]),
+    ("Mixer", [
+        "set_track_volume",
+        "set_track_pan",
+        "set_track_mute",
+        "set_track_solo",
+        "set_track_arm",
+        "set_track_send",
+        "set_track_monitoring",
+        "set_crossfader",
+    ]),
     ("MIDI", [
         "create_midi_track",
         "create_session_clip",
@@ -177,9 +187,22 @@ def _replace_block(text: str, begin_marker: str, end_marker: str, content: str) 
 
 
 def _replace_placeholders(text: str, count: int) -> str:
-    """Replace ``<!-- COMMAND COUNT -->`` placeholders with the live count."""
-    placeholder = "<!-- COMMAND COUNT -->"
-    return text.replace(placeholder, str(count))
+    """Replace command-count placeholders with the live count.
+
+    Uses an idempotent marker form ``<!-- COMMAND COUNT:NN -->`` so the
+    placeholder survives regeneration. If a bare ``<!-- COMMAND COUNT -->``
+    is found (legacy form), it is upgraded to the marker form.
+    """
+    import re
+
+    marker_re = re.compile(r"<!-- COMMAND COUNT:\s*\d+\s*-->")
+    bare = "<!-- COMMAND COUNT -->"
+    replacement = f"<!-- COMMAND COUNT:{count} -->"
+    # Upgrade any legacy bare placeholders to the marker form first.
+    text = text.replace(bare, replacement)
+    # Then refresh the count in any existing markers.
+    text = marker_re.sub(replacement, text)
+    return text
 
 
 # ── Consistency check ────────────────────────────────────────────────────

@@ -147,6 +147,14 @@ echo '{"command":"ping"}' | nc 127.0.0.1 8765
 | `set_overdub` | Enable or disable MIDI overdub recording (new notes added without replacing existing) | `enabled`* (boolean) |
 | `launch_scene` | Launch (fire) a scene in session view, starting all clips in that row | `scene_index`* (integer) |
 | `launch_clip` | Launch (fire) a clip in a specific track and session slot | `slot_index`* (integer), `track_index`* (integer) |
+| `set_track_volume` | Set a track's volume fader (0.0 = silent, 1.0 = max) | `track_index`* (integer), `volume`* (number) |
+| `set_track_pan` | Set a track's pan position (-1.0 = hard left, 0.0 = center, 1.0 = hard right) | `pan`* (number), `track_index`* (integer) |
+| `set_track_mute` | Mute or unmute a track | `mute`* (boolean), `track_index`* (integer) |
+| `set_track_solo` | Solo or unsolo a track | `solo`* (boolean), `track_index`* (integer) |
+| `set_track_arm` | Arm or disarm a track for recording. Only works on armable track types (MIDI/audio) | `arm`* (boolean), `track_index`* (integer) |
+| `set_track_send` | Set a track's send level to a return bus (0=A, 1=B, etc.). Value is 0.0-1.0 | `send_index`* (integer), `track_index`* (integer), `value`* (number) |
+| `set_track_monitoring` | Set a track's monitoring state: 0=In, 1=Auto, 2=Off | `monitoring`* (integer), `track_index`* (integer) |
+| `set_crossfader` | Set the master crossfader position (-1.0 = A, 0.0 = center, 1.0 = B) | `position`* (number) |
 | `create_midi_track` | Create a new MIDI track in Ableton Live | `index` (integer) |
 | `create_session_clip` | Create a new MIDI clip in session view on a specific track and slot | `length_beats` (number), `name` (string), `replace` (boolean), `slot_index`* (integer), `track_index`* (integer) |
 | `write_midi_notes` | Write MIDI notes to a clip. Notes are specified as an array of {pitch, start, duration, velocity} | `notes`* (array), `slot_index`* (integer), `track_index`* (integer) |
@@ -293,7 +301,7 @@ python3 -m venv .venv
 }
 ```
 
-3. Restart your MCP client. All 43 commands are now available as tools!
+3. Restart your MCP client. All <!-- COMMAND COUNT:51 --> commands are now available as tools!
 
 ---
 
@@ -375,6 +383,14 @@ client.close()
 | `set_overdub` | オーバーダブON/OFF |
 | `launch_scene` | シーンを起動（その行のクリップを再生） |
 | `launch_clip` | クリップを起動 |
+| `set_track_volume` | トラックの音量設定（0.0〜1.0） |
+| `set_track_pan` | トラックのパン設定（-1.0〜1.0） |
+| `set_track_mute` | トラックのミュートON/OFF |
+| `set_track_solo` | トラックのソロON/OFF |
+| `set_track_arm` | トラックのアーム（録音待機）ON/OFF |
+| `set_track_send` | トラックのセンドレベル設定 |
+| `set_track_monitoring` | トラックのモニタリング状態設定（In/Auto/Off） |
+| `set_crossfader` | マスタークロスフェーダー位置設定 |
 | `create_midi_track` | MIDIトラック作成 |
 | `create_session_clip` | セッションビューにクリップ作成 |
 | `write_midi_notes` | クリップにMIDIノート書き込み |
@@ -452,7 +468,7 @@ python3 -m venv .venv
 }
 ```
 
-3. MCPクライアントを再起動。全43コマンドがツールとして利用可能！
+3. MCPクライアントを再起動。全51コマンドがツールとして利用可能！
 
 ---
 
@@ -511,6 +527,14 @@ client.close()
 | `set_overdub` | 叠录开关 |
 | `launch_scene` | 启动场景（播放该行所有剪辑） |
 | `launch_clip` | 启动剪辑 |
+| `set_track_volume` | 设置轨道音量（0.0-1.0） |
+| `set_track_pan` | 设置轨道声相（-1.0到1.0） |
+| `set_track_mute` | 轨道静音开关 |
+| `set_track_solo` | 轨道独奏开关 |
+| `set_track_arm` | 轨道预备录音开关 |
+| `set_track_send` | 设置轨道发送电平 |
+| `set_track_monitoring` | 设置轨道监听状态（In/Auto/Off） |
+| `set_crossfader` | 设置主交叉推子位置 |
 | `create_midi_track` | 创建MIDI轨道 |
 | `create_session_clip` | 创建Session剪辑 |
 | `write_midi_notes` | 写入MIDI音符 |
@@ -588,7 +612,7 @@ python3 -m venv .venv
 }
 ```
 
-3. 重启MCP客户端，全部43个命令即可作为工具使用！
+3. 重启MCP客户端，全部51个命令即可作为工具使用！
 
 ---
 
@@ -647,6 +671,14 @@ client.close()
 | `set_overdub` | 오버더빙 켜기/끄기 |
 | `launch_scene` | 씬 실행 (해당 행의 모든 클립 재생) |
 | `launch_clip` | 클립 실행 |
+| `set_track_volume` | 트랙 볼륨 설정 (0.0-1.0) |
+| `set_track_pan` | 트랙 팬 설정 (-1.0 ~ 1.0) |
+| `set_track_mute` | 트랙 음소거 켜기/끄기 |
+| `set_track_solo` | 트랙 솔로 켜기/끄기 |
+| `set_track_arm` | 트랙 녹음 대기(암) 켜기/끄기 |
+| `set_track_send` | 트랙 센드 레벨 설정 |
+| `set_track_monitoring` | 트랙 모니터링 상태 설정 (In/Auto/Off) |
+| `set_crossfader` | 마스터 크로스페이더 위치 설정 |
 | `create_midi_track` | MIDI 트랙 생성 |
 | `create_session_clip` | 세션 클립 생성 |
 | `write_midi_notes` | MIDI 노트 쓰기 |
@@ -701,7 +733,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-**Claude Desktop** 설정에 추가 후 재시작하면 43개 명령을 도구로 사용할 수 있습니다!
+**Claude Desktop** 설정에 추가 후 재시작하면 51개 명령을 도구로 사용할 수 있습니다!
 
 ---
 
@@ -753,6 +785,14 @@ client.close()
 | `set_overdub` | Activar/desactivar overdub |
 | `launch_scene` | Lanzar escena (reproduce todos los clips de esa fila) |
 | `launch_clip` | Lanzar clip |
+| `set_track_volume` | Establecer volumen de pista (0.0-1.0) |
+| `set_track_pan` | Establecer paneo de pista (-1.0 a 1.0) |
+| `set_track_mute` | Silenciar/activar pista |
+| `set_track_solo` | Solo/activar pista |
+| `set_track_arm` | Armar/desarmar pista para grabación |
+| `set_track_send` | Establecer nivel de envío de pista |
+| `set_track_monitoring` | Establecer monitorización de pista (In/Auto/Off) |
+| `set_crossfader` | Establecer posición del crossfader maestro |
 | `create_midi_track` | Crear pista MIDI |
 | `create_session_clip` | Crear clip en vista de sesión |
 | `write_midi_notes` | Escribir notas MIDI |
@@ -807,7 +847,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 43 comandos como herramientas!
+¡Agrega a la configuración de tu cliente MCP y reinicia para usar los 51 comandos como herramientas!
 
 ---
 
@@ -859,6 +899,14 @@ client.close()
 | `set_overdub` | Activer/désactiver l'overdub |
 | `launch_scene` | Lancer une scène (lance tous les clips de la ligne) |
 | `launch_clip` | Lancer un clip |
+| `set_track_volume` | Définir le volume de piste (0.0-1.0) |
+| `set_track_pan` | Définir le panoramique de piste (-1.0 à 1.0) |
+| `set_track_mute` | Muter/activer la piste |
+| `set_track_solo` | Activer/désactiver le solo de piste |
+| `set_track_arm` | Armer/désarmer la piste pour l'enregistrement |
+| `set_track_send` | Définir le niveau d'envoi de piste |
+| `set_track_monitoring` | Définir le monitoring de piste (In/Auto/Off) |
+| `set_crossfader` | Définir la position du crossfader master |
 | `create_midi_track` | Créer une piste MIDI |
 | `create_session_clip` | Créer un clip en vue session |
 | `write_midi_notes` | Écrire des notes MIDI |
@@ -913,7 +961,7 @@ python3 -m venv .venv
 .venv/bin/pip install "mcp[cli]" librosa
 ```
 
-Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 43 commandes comme outils !
+Ajoutez à la configuration de votre client MCP et redémarrez pour utiliser les 51 commandes comme outils !
 
 ---
 

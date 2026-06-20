@@ -18,6 +18,7 @@ Common issues and their solutions. If your problem isn't listed here, check the
 8. [MCP Server Not Starting](#8-mcp-server-not-starting)
 9. [eval / exec Return "Disabled"](#9-eval--exec-return-disabled)
 10. [Transport Commands Have No Effect](#10-transport-commands-have-no-effect)
+11. [Mixer Commands Out of Range or Rejected](#11-mixer-commands-out-of-range-or-rejected)
 
 ---
 
@@ -557,8 +558,8 @@ Fix: verify the slot has a clip with `get_clip_info` before launching.
 `start_playing` starts the transport, but a MIDI track won't produce sound
 unless it's armed for recording or has monitoring set to "In". This is
 Ableton's normal behavior, not a LiveAgent issue.
-Fix: arm the track in Ableton, or set its monitoring state. (Mixer/arm
-control commands are planned — see the roadmap.)
+Fix: arm the track via `set_track_arm`, or set its monitoring state with
+`set_track_monitoring`.
 
 ### Verification
 
@@ -569,5 +570,52 @@ took effect:
 client.set_tempo(120)
 print(client.get_transport_state())
 # {'tempo': 120.0, 'is_playing': False, ...}
+```
+
+---
+
+## 11. Mixer Commands Out of Range or Rejected
+
+### Symptom
+
+Mixer commands (`set_track_volume`, `set_track_pan`, `set_track_send`,
+`set_track_arm`, etc.) return an error like:
+
+```
+volume must be between 0.0 and 1.0, got 75
+```
+or
+```
+Track "Master" cannot be armed (not an armable track type)
+```
+
+### Causes & Solutions
+
+**Cause A — Value out of range.** Mixer parameters use normalized ranges:
+- Volume: `0.0`–`1.0` (not dB, not 0–100)
+- Pan: `-1.0` (left) to `1.0` (right)
+- Send: `0.0`–`1.0`
+- Crossfader: `-1.0` (A) to `1.0` (B)
+
+Fix: pass values within these ranges. To convert from dB to the 0–1 fader
+value, use Ableton's conversion (roughly: 0 dB ≈ 0.85, -6 dB ≈ 0.72).
+
+**Cause B — Track cannot be armed.** `set_track_arm` only works on MIDI and
+audio tracks. The Master track and return tracks cannot be armed.
+Fix: check `can_be_armed` via `list_tracks` before calling `set_track_arm`.
+
+**Cause C — Send index out of range.** `set_track_send` indexes into the
+track's send slots. If the set has only 2 return tracks (A, B), `send_index`
+must be 0 or 1.
+Fix: call `list_tracks` to inspect available sends, or check the return track
+count in Ableton.
+
+### Verification
+
+```python
+# Confirm volume was set
+client.set_track_volume(track_index=1, volume=0.8)
+tracks = client.list_tracks()
+# The mixer state is reflected in the track summary.
 ```
 

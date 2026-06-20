@@ -214,6 +214,23 @@ class LiveAgent(ControlSurface):
         if command == "launch_clip":
             return self._launch_clip(payload)
 
+        if command == "set_track_volume":
+            return self._set_track_volume(payload)
+        if command == "set_track_pan":
+            return self._set_track_pan(payload)
+        if command == "set_track_mute":
+            return self._set_track_mute(payload)
+        if command == "set_track_solo":
+            return self._set_track_solo(payload)
+        if command == "set_track_arm":
+            return self._set_track_arm(payload)
+        if command == "set_track_send":
+            return self._set_track_send(payload)
+        if command == "set_track_monitoring":
+            return self._set_track_monitoring(payload)
+        if command == "set_crossfader":
+            return self._set_crossfader(payload)
+
         if command == "begin_undo_step":
             return self._begin_undo_step()
         if command == "end_undo_step":
@@ -463,6 +480,101 @@ class LiveAgent(ControlSurface):
         slot = clip_slots[slot_index]
         slot.fire()
         return {"launched_clip": True, "track_index": payload.get("track_index", 0), "slot_index": slot_index}
+
+    # ── Mixer Control ─────────────────────────────────────────────
+    # Volume/Pan/Send use mixer_device.<param>.value (a normalized float).
+    # Mute/Solo/Arm are direct track booleans. Monitoring is an int enum.
+
+    def _set_track_volume(self, payload):
+        if "volume" not in payload:
+            raise Exception("set_track_volume requires a 'volume' parameter (0.0-1.0)")
+        volume = float(payload.get("volume"))
+        if volume < 0.0 or volume > 1.0:
+            raise Exception("volume must be between 0.0 and 1.0, got %s" % volume)
+        track = self._track_by_index(payload.get("track_index", 0))
+        track.mixer_device.volume.value = volume
+        return {"track_index": payload.get("track_index", 0), "volume": track.mixer_device.volume.value}
+
+    def _set_track_pan(self, payload):
+        if "pan" not in payload:
+            raise Exception("set_track_pan requires a 'pan' parameter (-1.0 to 1.0)")
+        pan = float(payload.get("pan"))
+        if pan < -1.0 or pan > 1.0:
+            raise Exception("pan must be between -1.0 and 1.0, got %s" % pan)
+        track = self._track_by_index(payload.get("track_index", 0))
+        track.mixer_device.panning.value = pan
+        return {"track_index": payload.get("track_index", 0), "pan": track.mixer_device.panning.value}
+
+    def _set_track_mute(self, payload):
+        if "mute" not in payload:
+            raise Exception("set_track_mute requires a 'mute' parameter (bool)")
+        track = self._track_by_index(payload.get("track_index", 0))
+        track.mute = bool(payload.get("mute"))
+        return {"track_index": payload.get("track_index", 0), "mute": self._safe_attr(track, "mute", None)}
+
+    def _set_track_solo(self, payload):
+        if "solo" not in payload:
+            raise Exception("set_track_solo requires a 'solo' parameter (bool)")
+        track = self._track_by_index(payload.get("track_index", 0))
+        track.solo = bool(payload.get("solo"))
+        return {"track_index": payload.get("track_index", 0), "solo": self._safe_attr(track, "solo", None)}
+
+    def _set_track_arm(self, payload):
+        if "arm" not in payload:
+            raise Exception("set_track_arm requires an 'arm' parameter (bool)")
+        track = self._track_by_index(payload.get("track_index", 0))
+        if not self._safe_attr(track, "can_be_armed", False):
+            raise Exception('Track "%s" cannot be armed (not an armable track type)' % track.name)
+        track.arm = bool(payload.get("arm"))
+        return {"track_index": payload.get("track_index", 0), "arm": self._safe_attr(track, "arm", None)}
+
+    def _set_track_send(self, payload):
+        """Set a send level. send_index identifies which send bus (0=A, 1=B, ...)."""
+        if "send_index" not in payload:
+            raise Exception("set_track_send requires a 'send_index' parameter (int)")
+        if "value" not in payload:
+            raise Exception("set_track_send requires a 'value' parameter (0.0-1.0)")
+        send_index = int(payload.get("send_index"))
+        value = float(payload.get("value"))
+        if value < 0.0 or value > 1.0:
+            raise Exception("send value must be between 0.0 and 1.0, got %s" % value)
+        track = self._track_by_index(payload.get("track_index", 0))
+        sends = list(getattr(track.mixer_device, "sends", []))
+        if send_index < 0 or send_index >= len(sends):
+            raise Exception(
+                "Send index out of range: %s (track has %s sends)" % (send_index, len(sends))
+            )
+        sends[send_index].value = value
+        return {
+            "track_index": payload.get("track_index", 0),
+            "send_index": send_index,
+            "value": sends[send_index].value,
+        }
+
+    def _set_track_monitoring(self, payload):
+        """Set monitoring state: 0=In, 1=Auto, 2=Off."""
+        if "monitoring" not in payload:
+            raise Exception("set_track_monitoring requires a 'monitoring' parameter (0=In, 1=Auto, 2=Off)")
+        monitoring = int(payload.get("monitoring"))
+        if monitoring not in (0, 1, 2):
+            raise Exception("monitoring must be 0 (In), 1 (Auto), or 2 (Off), got %s" % monitoring)
+        track = self._track_by_index(payload.get("track_index", 0))
+        track.current_monitoring_state = monitoring
+        return {
+            "track_index": payload.get("track_index", 0),
+            "monitoring": self._safe_attr(track, "current_monitoring_state", None),
+        }
+
+    def _set_crossfader(self, payload):
+        """Set the master crossfader position (-1.0 = A, 0.0 = center, 1.0 = B)."""
+        if "position" not in payload:
+            raise Exception("set_crossfader requires a 'position' parameter (-1.0 to 1.0)")
+        position = float(payload.get("position"))
+        if position < -1.0 or position > 1.0:
+            raise Exception("crossfader position must be between -1.0 and 1.0, got %s" % position)
+        song = self.song()
+        song.crossfader = position
+        return {"crossfader": self._safe_attr(song, "crossfader", None)}
 
     def _track_summaries(self):
         return [self._track_summary(i, track) for i, track in enumerate(self.song().tracks)]

@@ -158,6 +158,39 @@ DESTRUCTIVE_TOOLS = {
         "would_do": f"Launch clip in Track {a.get('track_index')} / Slot {a.get('slot_index')}",
         "target": f"Track {a.get('track_index')} / Slot {a.get('slot_index')}",
     },
+    # ── Mixer (destructive: change track/master mix state) ──
+    "set_track_volume": lambda a: {
+        "would_do": f"Set volume to {a.get('volume')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_track_pan": lambda a: {
+        "would_do": f"Set pan to {a.get('pan')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_track_mute": lambda a: {
+        "would_do": f"Set mute to {a.get('mute')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_track_solo": lambda a: {
+        "would_do": f"Set solo to {a.get('solo')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_track_arm": lambda a: {
+        "would_do": f"Set arm to {a.get('arm')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_track_send": lambda a: {
+        "would_do": f"Set send {a.get('send_index')} to {a.get('value')}",
+        "target": f"Track {a.get('track_index')} / Send {a.get('send_index')}",
+    },
+    "set_track_monitoring": lambda a: {
+        "would_do": f"Set monitoring to {a.get('monitoring')}",
+        "target": f"Track {a.get('track_index')}",
+    },
+    "set_crossfader": lambda a: {
+        "would_do": f"Set crossfader to {a.get('position')}",
+        "target": "Master crossfader",
+    },
     "batch": lambda a: {
         "would_do": f"Execute {len(a.get('commands', []))} commands as single undo step",
         "target": ", ".join(c.get("command", "?") for c in a.get("commands", [])),
@@ -289,6 +322,107 @@ def _build_tools() -> list[Tool]:
                 "properties": {
                     "track_index": {"type": "integer", "description": "Target track index (0-based)"},
                     "slot_index": {"type": "integer", "description": "Session slot/scene index (0-based)"},
+                },
+            },
+        ),
+        # ── Mixer ──
+        Tool(
+            name="set_track_volume",
+            description="Set a track's volume fader (0.0 = silent, 1.0 = max).",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "volume"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "volume": {"type": "number", "description": "Volume level (0.0-1.0)"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_pan",
+            description="Set a track's pan position (-1.0 = hard left, 0.0 = center, 1.0 = hard right).",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "pan"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "pan": {"type": "number", "description": "Pan position (-1.0 to 1.0)"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_mute",
+            description="Mute or unmute a track.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "mute"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "mute": {"type": "boolean", "description": "True to mute, False to unmute"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_solo",
+            description="Solo or unsolo a track.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "solo"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "solo": {"type": "boolean", "description": "True to solo, False to unsolo"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_arm",
+            description="Arm or disarm a track for recording. Only works on armable track types (MIDI/audio).",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "arm"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "arm": {"type": "boolean", "description": "True to arm, False to disarm"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_send",
+            description="Set a track's send level to a return bus (0=A, 1=B, etc.). Value is 0.0-1.0.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "send_index", "value"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "send_index": {"type": "integer", "description": "Send bus index (0=A, 1=B, ...)"},
+                    "value": {"type": "number", "description": "Send level (0.0-1.0)"},
+                },
+            },
+        ),
+        Tool(
+            name="set_track_monitoring",
+            description="Set a track's monitoring state: 0=In, 1=Auto, 2=Off.",
+            inputSchema={
+                "type": "object",
+                "required": ["track_index", "monitoring"],
+                "properties": {
+                    "track_index": {"type": "integer", "description": "Target track index (0-based)"},
+                    "monitoring": {
+                        "type": "integer",
+                        "description": "0=In, 1=Auto, 2=Off",
+                        "enum": [0, 1, 2],
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="set_crossfader",
+            description="Set the master crossfader position (-1.0 = A, 0.0 = center, 1.0 = B).",
+            inputSchema={
+                "type": "object",
+                "required": ["position"],
+                "properties": {
+                    "position": {"type": "number", "description": "Crossfader position (-1.0 to 1.0)"},
                 },
             },
         ),

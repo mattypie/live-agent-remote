@@ -46,6 +46,15 @@ EXPECTED_DESTRUCTIVE_TOOLS = {
     "set_overdub",
     "launch_scene",
     "launch_clip",
+    # Mixer (destructive: change track/master mix state)
+    "set_track_volume",
+    "set_track_pan",
+    "set_track_mute",
+    "set_track_solo",
+    "set_track_arm",
+    "set_track_send",
+    "set_track_monitoring",
+    "set_crossfader",
 }
 
 
@@ -300,3 +309,113 @@ async def test_get_transport_state_is_not_destructive(mock_send):
     assert "dry_run" not in forwarded_payload
     # The response is whatever liveagent_send returned.
     assert data == {"status": "ok"}
+
+
+# ── Mixer commands ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_set_track_volume_forwards(mock_send):
+    """``set_track_volume`` forwards track_index and volume verbatim."""
+    await _call("set_track_volume", track_index=2, volume=0.75)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_volume"
+    assert forwarded_payload["track_index"] == 2
+    assert forwarded_payload["volume"] == 0.75
+    assert "dry_run" not in forwarded_payload
+
+
+@pytest.mark.asyncio
+async def test_set_track_volume_dry_run_preview(mock_send):
+    """``set_track_volume`` with ``dry_run=True`` previews without executing."""
+    data = await _call("set_track_volume", track_index=1, volume=0.5, dry_run=True)
+
+    assert data["dry_run"] is True
+    assert data["safe"] is True
+    assert "0.5" in data["would_do"]
+    assert "Track 1" in data["target"]
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_track_pan_forwards(mock_send):
+    """``set_track_pan`` forwards track_index and pan."""
+    await _call("set_track_pan", track_index=0, pan=-0.5)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_pan"
+    assert forwarded_payload["pan"] == -0.5
+
+
+@pytest.mark.asyncio
+async def test_set_track_mute_dry_run_preview(mock_send):
+    """``set_track_mute`` with ``dry_run=True`` previews the mute state."""
+    data = await _call("set_track_mute", track_index=3, mute=True, dry_run=True)
+
+    assert data["dry_run"] is True
+    assert "True" in data["would_do"]
+    assert "Track 3" in data["target"]
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_track_solo_forwards(mock_send):
+    """``set_track_solo`` forwards the solo flag."""
+    await _call("set_track_solo", track_index=1, solo=True)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_solo"
+    assert forwarded_payload["solo"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_track_arm_forwards(mock_send):
+    """``set_track_arm`` forwards the arm flag."""
+    await _call("set_track_arm", track_index=0, arm=True)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_arm"
+    assert forwarded_payload["arm"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_track_send_forwards_all_params(mock_send):
+    """``set_track_send`` forwards track_index, send_index, and value."""
+    await _call("set_track_send", track_index=1, send_index=0, value=0.6)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_send"
+    assert forwarded_payload["send_index"] == 0
+    assert forwarded_payload["value"] == 0.6
+
+
+@pytest.mark.asyncio
+async def test_set_track_monitoring_forwards_enum(mock_send):
+    """``set_track_monitoring`` forwards the monitoring int (0/1/2)."""
+    await _call("set_track_monitoring", track_index=2, monitoring=1)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_track_monitoring"
+    assert forwarded_payload["monitoring"] == 1
+
+
+@pytest.mark.asyncio
+async def test_set_crossfader_forwards(mock_send):
+    """``set_crossfader`` forwards the position value."""
+    await _call("set_crossfader", position=0.0)
+
+    forwarded_command, forwarded_payload = mock_send.call_args[0]
+    assert forwarded_command == "set_crossfader"
+    assert forwarded_payload["position"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_set_crossfader_dry_run_preview(mock_send):
+    """``set_crossfader`` with ``dry_run=True`` previews without executing."""
+    data = await _call("set_crossfader", position=1.0, dry_run=True)
+
+    assert data["dry_run"] is True
+    assert "1.0" in data["would_do"]
+    assert "crossfader" in data["target"].lower()
+    mock_send.assert_not_called()
