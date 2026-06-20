@@ -39,6 +39,7 @@ live-agent-mcp = "mcp_server:main"
 
 [tool.setuptools]
 py-modules = ["mcp_server", "audio_analyzer", "batch_analyze", "config"]
+packages = ["tools"]
 
 # ── Ruff ────────────────────────────────────────────────────────────────────
 
