@@ -15,6 +15,7 @@ Usage:
 
 import json
 import socket
+import threading
 
 
 class LiveAgentClient:
@@ -287,3 +288,134 @@ class LiveAgentClient:
             self._sock.close()
         except Exception:
             pass
+
+
+class LiveAgentSubscriber:
+    """Receive pushed events from LiveAgent over a dedicated subscribe port.
+
+    LiveAgent snapshots transport/mixer/clip state and pushes change events
+    to subscribers. This class opens a persistent connection, registers for
+    the requested event categories, and dispatches incoming events to
+    callbacks registered via :meth:`on`.
+
+    Event categories (pass any subset to ``events``):
+        - ``transport``  → ``transport_changed``
+        - ``mixer``      → ``mixer_changed``
+        - ``scenes``     → ``clip_launched``, ``clip_stopped``
+
+    Usage::
+
+        sub = LiveAgentSubscriber()
+        sub.on("transport_changed", lambda data: print("tempo:", data))
+        sub.listen()  # starts a background thread; returns immediately
+        # ... events fire callbacks ...
+        sub.close()
+
+    You can also register a catch-all handler with ``on("*", cb)`` which
+    receives ``(event_name, data)`` for every event.
+    """
+
+    DEFAULT_PORT = 8766
+
+    def __init__(self, host="127.0.0.1", port=DEFAULT_PORT, events=None, timeout=10):
+        if events is None:
+            events = ["transport", "mixer", "scenes"]
+        self._host = host
+        self._port = port
+        self._events = events
+        self._handlers = {}  # event_name -> list of callbacks
+        self._wildcard_handlers = []
+        self._sock = None
+        self._thread = None
+        self._running = False
+        # Connect and send the subscribe handshake.
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.settimeout(timeout)
+        self._sock.connect((host, port))
+        request = json.dumps(
+            {"command": "subscribe", "payload": {"events": events}},
+            separators=(",", ":"),
+        ) + "\n"
+        self._sock.sendall(request.encode("utf-8"))
+        # Read the ack (one line).
+        buf = b""
+        while b"\n" not in buf:
+            chunk = self._sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("subscribe handshake failed: connection closed")
+            buf += chunk
+        ack = json.loads(buf.split(b"\n", 1)[0].decode("utf-8").strip())
+        if not ack.get("ok"):
+            raise ConnectionError(f"subscribe rejected: {ack.get('error', 'unknown')}")
+        # Reuse the leftover buffer (after the ack line) for the listener.
+        self._leftover = buf.split(b"\n", 1)[1] if b"\n" in buf else b""
+
+    def on(self, event_name, callback):
+        """Register a callback for an event name (or ``"*"`` for all)."""
+        if event_name == "*":
+            self._wildcard_handlers.append(callback)
+        else:
+            self._handlers.setdefault(event_name, []).append(callback)
+
+    def listen(self):
+        """Start a background thread that reads and dispatches events."""
+        if self._thread is not None:
+            return
+        self._running = True
+        self._sock.settimeout(None)  # blocking read
+        self._thread = threading.Thread(target=self._read_loop, daemon=True)
+        self._thread.start()
+
+    def _read_loop(self):
+        buf = self._leftover
+        self._leftover = b""
+        try:
+            while self._running:
+                chunk = self._sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+                # Dispatch each complete line as an event message.
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    self._dispatch(line.decode("utf-8"))
+        except Exception:
+            pass
+
+    def _dispatch(self, raw):
+        try:
+            msg = json.loads(raw)
+        except Exception:
+            return
+        # Messages from the server are {"events": [ {...}, ... ]}.
+        events = msg.get("events") if isinstance(msg, dict) else None
+        if not events:
+            return
+        for evt in events:
+            name = evt.get("event")
+            data = evt.get("data", {})
+            for cb in self._handlers.get(name, []):
+                try:
+                    cb(data)
+                except Exception:
+                    pass
+            for cb in self._wildcard_handlers:
+                try:
+                    cb(name, data)
+                except Exception:
+                    pass
+
+    def close(self):
+        """Stop the listener and close the connection."""
+        self._running = False
+        try:
+            if self._sock:
+                self._sock.close()
+        except Exception:
+            pass
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+            self._thread = None

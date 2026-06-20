@@ -13,6 +13,7 @@
  */
 
 const net = require('net');
+const { EventEmitter } = require('events');
 
 class LiveAgentClient {
   constructor(host = '127.0.0.1', port = 8765, timeout = 10000) {
@@ -226,4 +227,90 @@ class LiveAgentClient {
   }
 }
 
-module.exports = { LiveAgentClient };
+/**
+ * LiveAgentSubscriber — receive pushed events from LiveAgent.
+ *
+ * LiveAgent snapshots transport/mixer/clip state and emits change events.
+ * This class opens a persistent connection on the subscribe port and emits
+ * Node events for each change.
+ *
+ * Event categories (pass any subset to `events`):
+ *   - 'transport'  → 'transport_changed'
+ *   - 'mixer'      → 'mixer_changed'
+ *   - 'scenes'     → 'clip_launched', 'clip_stopped'
+ *
+ * Usage:
+ *   const { LiveAgentSubscriber } = require('./live_agent_client');
+ *   const sub = new LiveAgentSubscriber();
+ *   sub.on('transport_changed', (data) => console.log('tempo:', data));
+ *   sub.on('*', (name, data) => console.log(name, data));  // catch-all
+ *   // ... events fire as state changes in Live ...
+ *   sub.close();
+ */
+class LiveAgentSubscriber extends EventEmitter {
+  static DEFAULT_PORT = 8766;
+
+  constructor(host = '127.0.0.1', port = LiveAgentSubscriber.DEFAULT_PORT, events = null) {
+    super();
+    if (events === null) events = ['transport', 'mixer', 'scenes'];
+    this.host = host;
+    this.port = port;
+    this.events = events;
+    this._sock = null;
+    this._buffer = '';
+
+    this._sock = net.createConnection({ host, port }, () => {
+      const request = JSON.stringify({ command: 'subscribe', payload: { events } }) + '\n';
+      this._sock.write(request);
+    });
+
+    this._sock.on('data', (data) => {
+      this._buffer += data.toString();
+      // Dispatch each complete newline-delimited message.
+      let idx;
+      while ((idx = this._buffer.indexOf('\n')) !== -1) {
+        const line = this._buffer.slice(0, idx).trim();
+        this._buffer = this._buffer.slice(idx + 1);
+        if (!line) continue;
+        this._dispatch(line);
+      }
+    });
+
+    this._sock.on('error', (err) => {
+      this.emit('error', err);
+    });
+
+    this._sock.on('close', () => {
+      this.emit('close');
+    });
+  }
+
+  _dispatch(raw) {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    // Messages from the server are { events: [ {...}, ... ] }.
+    const events = msg && msg.events;
+    if (!events) return;
+    for (const evt of events) {
+      const name = evt.event;
+      const data = evt.data || {};
+      // Emit the specific event name.
+      this.emit(name, data);
+      // Emit a catch-all so consumers can listen to '*'.
+      this.emit('*', name, data);
+    }
+  }
+
+  close() {
+    if (this._sock) {
+      this._sock.destroy();
+      this._sock = null;
+    }
+  }
+}
+
+module.exports = { LiveAgentClient, LiveAgentSubscriber };

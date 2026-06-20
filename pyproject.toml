@@ -68,6 +68,8 @@ ignore = [
 "batch_analyze.py" = ["UP031", "I001", "W291", "W293", "F401", "F841"]
 # mcp_server.py intentionally sets REPO_DIR before imports; pre-existing style
 "mcp_server.py" = ["E402", "F401", "W293"]
+# examples/ use percent-format for consistency with existing scripts
+"examples/*.py" = ["UP031"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["mcp_server", "audio_analyzer", "config"]

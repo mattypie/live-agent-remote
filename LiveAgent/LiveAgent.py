@@ -17,6 +17,25 @@ from _Framework.ControlSurface import ControlSurface
 
 HOST = "127.0.0.1"
 PORT = 8765
+SUBSCRIBE_PORT = 8766
+
+# How often (seconds) the event-pusher snapshots Live state and diffs it.
+PUSH_INTERVAL = 0.25
+
+
+def _event_in_category(event_name, categories):
+    """Map an event name to its subscription category.
+
+    Pure function (module-level for testability). Categories are the strings
+    a subscriber passes in ``events``: ``transport``, ``mixer``, ``scenes``.
+    """
+    if "transport" in categories and event_name == "transport_changed":
+        return True
+    if "mixer" in categories and event_name == "mixer_changed":
+        return True
+    if "scenes" in categories and event_name in ("clip_launched", "clip_stopped"):
+        return True
+    return False
 
 
 class LiveAgent(ControlSurface):
@@ -30,13 +49,23 @@ class LiveAgent(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self._running = True
         self._server_socket = None
+        self._subscribe_socket = None
         self._command_queue = queue.Queue()
         # SECURITY: eval/exec disabled by default. Enable with LIVEAGENT_ENABLE_UNSAFE=1
         self._unsafe_enabled = os.environ.get("LIVEAGENT_ENABLE_UNSAFE", "0") == "1"
         self._server_thread = threading.Thread(target=self._run_server)
         self._server_thread.daemon = True
         self._server_thread.start()
+        # Event push: subscriber registry and state diffing (main-thread only).
+        self._subscribers = []
+        self._last_snapshot = {}
+        self._last_push_time = 0.0
+        self._baseline_set = False
+        self._subscribe_thread = threading.Thread(target=self._run_subscribe_server)
+        self._subscribe_thread.daemon = True
+        self._subscribe_thread.start()
         self.log_message("[LiveAgent] listening on %s:%s (unsafe=%s)" % (HOST, PORT, self._unsafe_enabled))
+        self.log_message("[LiveAgent] event push on %s:%s" % (HOST, SUBSCRIBE_PORT))
         self.schedule_message(1, self._drain_commands)
 
     def disconnect(self):
@@ -44,6 +73,11 @@ class LiveAgent(ControlSurface):
         try:
             if self._server_socket:
                 self._server_socket.close()
+        except Exception:
+            pass
+        try:
+            if self._subscribe_socket:
+                self._subscribe_socket.close()
         except Exception:
             pass
         self.log_message("[LiveAgent] disconnected")
@@ -74,7 +108,80 @@ class LiveAgent(ControlSurface):
                     self._log_exception("accept failed")
                 break
 
-    def _handle_client(self, conn):
+    def _run_subscribe_server(self):
+        """Listen on SUBSCRIBE_PORT for event-push subscribers.
+
+        A subscriber sends one line (the ``subscribe`` command); the connection
+        is then flipped into push-only mode by the main thread. The socket
+        thread keeps the connection alive and reads (discarding) any further
+        client bytes so disconnects are detected promptly.
+        """
+        try:
+            server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind((HOST, SUBSCRIBE_PORT))
+            server.listen(8)
+            server.settimeout(0.5)
+            self._subscribe_socket = server
+        except Exception:
+            self._log_exception("subscribe server startup failed")
+            return
+
+        while self._running:
+            try:
+                conn, _addr = self._subscribe_socket.accept()
+                thread = threading.Thread(target=self._handle_subscriber, args=(conn,))
+                thread.daemon = True
+                thread.start()
+            except socket.timeout:
+                continue
+            except Exception:
+                if self._running:
+                    self._log_exception("subscribe accept failed")
+                break
+
+    def _handle_subscriber(self, conn):
+        """Read the subscribe handshake, register the connection, then keep it
+        alive until the client disconnects or Live shuts down."""
+        conn.settimeout(10)
+        buffer = b""
+        try:
+            # Read at least one line: the subscribe command.
+            while self._running and b"\n" not in buffer:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    return
+                buffer += chunk
+            line, buffer = buffer.split(b"\n", 1)
+            if not line.strip():
+                return
+            try:
+                request = json.loads(line.decode("utf-8"))
+            except Exception as err:
+                self._send_response(conn, {"ok": False, "error": "Invalid JSON: %s" % err})
+                return
+            # Enqueue for the main thread to register the subscriber.
+            self._command_queue.put((request, conn))
+
+            # Keep the connection open: detect disconnect via recv returning b"".
+            # We discard any further client bytes (subscribers are push-only).
+            conn.settimeout(2.0)
+            while self._running:
+                try:
+                    chunk = conn.recv(65536)
+                    if not chunk:
+                        break
+                except socket.timeout:
+                    continue
+                except Exception:
+                    break
+        except Exception:
+            pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
         conn.settimeout(10)
         buffer = b""
         try:
@@ -109,17 +216,21 @@ class LiveAgent(ControlSurface):
             except queue.Empty:
                 break
 
-            response = self._safe_execute(request)
+            response = self._safe_execute(request, conn)
             self._send_response(conn, response)
             handled += 1
+
+        # Event push: snapshot + diff + notify subscribers on a throttle.
+        if self._running and self._subscribers:
+            self._maybe_push_events()
 
         if self._running:
             self.schedule_message(1, self._drain_commands)
 
-    def _safe_execute(self, request):
+    def _safe_execute(self, request, conn=None):
         request_id = request.get("id")
         try:
-            result = self._execute(request)
+            result = self._execute(request, conn)
             return {"id": request_id, "ok": True, "result": result}
         except Exception as err:
             self._log_exception("command failed")
@@ -137,9 +248,16 @@ class LiveAgent(ControlSurface):
         except Exception:
             pass
 
-    def _execute(self, request):
+    def _execute(self, request, conn=None):
         command = request.get("command")
         payload = request.get("payload") or {}
+
+        # Event subscription: register/unregister the calling connection.
+        # Handled here (main thread) so the subscriber list is single-threaded.
+        if command == "subscribe":
+            return self._subscribe(payload, conn)
+        if command == "unsubscribe":
+            return self._unsubscribe(payload, conn)
 
         if command == "ping":
             return {"pong": True, "time": time.time()}
@@ -575,6 +693,153 @@ class LiveAgent(ControlSurface):
         song = self.song()
         song.crossfader = position
         return {"crossfader": self._safe_attr(song, "crossfader", None)}
+
+    # ── Event Push (subscriber registry + snapshot/diff) ─────────
+    # All subscriber-list mutation and all LOM reads happen on the main
+    # thread (inside _drain_commands), so no locking is needed. Dead
+    # subscribers are pruned when a push fails (send errors are swallowed
+    # by _send_response, so we track success explicitly).
+
+    def _subscribe(self, payload, conn):
+        if conn is None:
+            raise Exception("subscribe requires a live connection (use port %s)" % SUBSCRIBE_PORT)
+        events = payload.get("events") or ["transport", "mixer", "scenes"]
+        entry = {"conn": conn, "events": set(events)}
+        if entry not in self._subscribers:
+            self._subscribers.append(entry)
+        self.log_message("[LiveAgent] subscriber added (%s total)" % len(self._subscribers))
+        return {"subscribed": True, "events": sorted(events)}
+
+    def _unsubscribe(self, payload, conn):
+        if conn is None:
+            raise Exception("unsubscribe requires a live connection")
+        before = len(self._subscribers)
+        self._subscribers = [s for s in self._subscribers if s["conn"] != conn]
+        self.log_message("[LiveAgent] subscriber removed (%s -> %s)" % (before, len(self._subscribers)))
+        return {"unsubscribed": True}
+
+    def _snapshot_state(self):
+        """Capture all watchable state for diffing. Runs on main thread."""
+        song = self.song()
+        transport = {
+            "tempo": self._safe_attr(song, "tempo", None),
+            "is_playing": self._safe_attr(song, "is_playing", None),
+            "signature_numerator": self._safe_attr(song, "signature_numerator", None),
+            "signature_denominator": self._safe_attr(song, "signature_denominator", None),
+            "metronome": self._safe_attr(song, "metronome", None),
+            "overdub": self._safe_attr(song, "overdub", None),
+        }
+        tracks = []
+        for index, track in enumerate(self.song().tracks):
+            mixer = self._safe_attr(track, "mixer_device", None)
+            volume = self._safe_attr(self._safe_attr(mixer, "volume", None), "value", None) if mixer else None
+            pan = self._safe_attr(self._safe_attr(mixer, "panning", None), "value", None) if mixer else None
+            slots = []
+            for slot in getattr(track, "clip_slots", []):
+                slots.append({
+                    "is_playing": self._safe_attr(slot, "is_playing", False),
+                    "is_triggered": self._safe_attr(slot, "is_triggered", False),
+                })
+            tracks.append({
+                "index": index,
+                "volume": volume,
+                "pan": pan,
+                "mute": self._safe_attr(track, "mute", None),
+                "solo": self._safe_attr(track, "solo", None),
+                "arm": self._safe_attr(track, "arm", None),
+                "slots": slots,
+            })
+        return {"transport": transport, "tracks": tracks}
+
+    @staticmethod
+    def _diff_state(old, new):
+        """Compare two snapshots and return a list of event dicts.
+
+        Pure function — no LOM access, no side effects. Easy to unit test.
+        """
+        events = []
+
+        # Transport changes
+        old_t = old.get("transport", {}) if old else {}
+        new_t = new.get("transport", {})
+        t_changes = {k: new_t[k] for k in new_t if old_t.get(k) != new_t.get(k)}
+        if t_changes:
+            events.append({"event": "transport_changed", "data": t_changes})
+
+        # Per-track mixer + slot changes
+        old_tracks = {t["index"]: t for t in (old.get("tracks", []) if old else [])}
+        for track in new.get("tracks", []):
+            idx = track["index"]
+            old_track = old_tracks.get(idx, {})
+            # Mixer changes (volume/pan/mute/solo/arm)
+            m_changes = {}
+            for key in ("volume", "pan", "mute", "solo", "arm"):
+                old_val = old_track.get(key)
+                new_val = track.get(key)
+                if old_val != new_val and not (old_val is None and new_val is None):
+                    m_changes[key] = new_val
+            if m_changes:
+                events.append({"event": "mixer_changed", "data": {"track_index": idx, "changes": m_changes}})
+
+            # Clip slot changes (launch/stop)
+            old_slots = old_track.get("slots", [])
+            new_slots = track.get("slots", [])
+            for s_idx, slot in enumerate(new_slots):
+                old_slot = old_slots[s_idx] if s_idx < len(old_slots) else {}
+                was_playing = old_slot.get("is_playing", False)
+                now_playing = slot.get("is_playing", False)
+                if now_playing and not was_playing:
+                    events.append({"event": "clip_launched", "data": {"track_index": idx, "slot_index": s_idx}})
+                elif was_playing and not now_playing:
+                    events.append({"event": "clip_stopped", "data": {"track_index": idx, "slot_index": s_idx}})
+
+        return events
+
+    def _maybe_push_events(self):
+        """Throttled snapshot/diff/push. Called from _drain_commands."""
+        now = time.time()
+        if now - self._last_push_time < PUSH_INTERVAL:
+            return
+        self._last_push_time = now
+
+        try:
+            snapshot = self._snapshot_state()
+        except Exception:
+            self._log_exception("event snapshot failed")
+            return
+
+        events = self._diff_state(self._last_snapshot, snapshot)
+        self._last_snapshot = snapshot
+
+        # The very first snapshot primes the baseline without emitting events,
+        # so subscribers don't receive a flood of "everything changed" on connect.
+        if not self._baseline_set:
+            self._baseline_set = True
+            return
+
+        if not events:
+            return
+
+        # Broadcast to subscribers, pruning any that fail to receive.
+        alive = []
+        dead = []
+        for sub in self._subscribers:
+            wanted = sub["events"]
+            relevant = [e for e in events if _event_in_category(e["event"], wanted)]
+            if not relevant:
+                alive.append(sub)
+                continue
+            payload = json.dumps(
+                {"events": relevant}, separators=(",", ":")
+            ).encode("utf-8") + b"\n"
+            try:
+                sub["conn"].sendall(payload)
+                alive.append(sub)
+            except Exception:
+                dead.append(sub)
+        if dead:
+            self._subscribers = alive
+            self.log_message("[LiveAgent] pruned %s dead subscriber(s)" % len(dead))
 
     def _track_summaries(self):
         return [self._track_summary(i, track) for i, track in enumerate(self.song().tracks)]

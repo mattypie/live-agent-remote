@@ -19,6 +19,7 @@ Common issues and their solutions. If your problem isn't listed here, check the
 9. [eval / exec Return "Disabled"](#9-eval--exec-return-disabled)
 10. [Transport Commands Have No Effect](#10-transport-commands-have-no-effect)
 11. [Mixer Commands Out of Range or Rejected](#11-mixer-commands-out-of-range-or-rejected)
+12. [Event Push (Subscribe) Not Working](#12-event-push-subscribe-not-working)
 
 ---
 
@@ -617,5 +618,65 @@ count in Ableton.
 client.set_track_volume(track_index=1, volume=0.8)
 tracks = client.list_tracks()
 # The mixer state is reflected in the track summary.
+```
+
+---
+
+## 12. Event Push (Subscribe) Not Working
+
+### Symptom
+
+`LiveAgentSubscriber` fails to connect, connects but receives no events, or
+events stop arriving after a while.
+
+### Causes & Solutions
+
+**Cause A — Wrong port.** Event push uses a **separate port (8766)**, not the
+command port 8765. `LiveAgentSubscriber` defaults to 8766, but if you
+explicitly pass `port=8765` it will connect but never receive events (the
+command port doesn't push).
+Fix: use the default port, or `LiveAgentSubscriber(port=8766)`.
+
+**Cause B — Subscribe port not listening.** LiveAgent opens port 8766 at
+startup. If it failed to bind (e.g. another process is using 8766), the push
+server won't run. Check Ableton's `Log.txt` for
+`event push on 127.0.0.1:8766`. If that line is missing or followed by an
+error, the subscribe server didn't start.
+Fix: free port 8766 and restart Ableton.
+
+**Cause C — No state changes since subscribing.** The first snapshot primes
+the baseline **without** emitting events (to avoid a flood of "everything
+changed" on connect). Events only fire when something actually changes
+after that. If nothing in Live changed, you correctly receive nothing.
+Fix: change the tempo, press play/stop, or move a fader in Ableton to
+verify the stream is working.
+
+**Cause D — Subscriber pruned after disconnect.** If a subscriber's
+connection breaks, LiveAgent removes it on the next push attempt (the send
+fails silently). The `LiveAgentSubscriber` object's background thread will
+exit; calling `listen()` again won't reconnect — you must create a new
+`LiveAgentSubscriber`.
+Fix: wrap your subscriber in a reconnect loop if you need resilience.
+
+**Cause E — MCP clients can't subscribe.** MCP (Claude Desktop, Cursor) is
+fundamentally request/response — there is no way to push events to an MCP
+client. This is a protocol limitation, not a bug.
+Fix: use the Python/JS SDK client or a raw TCP connection to port 8766 for
+event push.
+
+### Verification
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()
+got_event = []
+sub.on("transport_changed", lambda data: got_event.append(data))
+sub.listen()
+
+# Now change the tempo in Ableton. Within 250ms, got_event should be non-empty.
+import time; time.sleep(2)
+print("received:", got_event)
+sub.close()
 ```
 

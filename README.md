@@ -213,6 +213,37 @@ External Script / AI Agent
    Ableton Live API (LOM)
 ```
 
+### Event Push (Real-time State Notifications)
+
+LiveAgent can **push** state-change events to subscribers in real time, so
+external scripts can react to tempo changes, play/stop, mixer moves, and
+clip launches without polling.
+
+**How it works:** LiveAgent snapshots transport + mixer + clip state every
+250ms, diffs it against the previous snapshot, and pushes a JSON event to
+every subscriber. A separate port (`8766`) is used so the request/response
+channel (`8765`) is unaffected.
+
+> **Note:** Event push is available to the **Python/JS SDK clients** and raw
+> TCP clients only. MCP clients (Claude Desktop, Cursor) cannot receive
+> pushed events — MCP is request/response only.
+
+**Python:**
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # connects to 127.0.0.1:8766
+sub.on("transport_changed", lambda data: print("tempo:", data))
+sub.on("mixer_changed", lambda data: print("mixer:", data))
+sub.on("clip_launched", lambda data: print("launched:", data))
+sub.listen()  # background thread; callbacks fire on state changes
+```
+
+**Event types:** `transport_changed`, `mixer_changed`, `clip_launched`,
+`clip_stopped`. Subscribe to categories: `["transport", "mixer", "scenes"]`.
+
+See `examples/events_demo.py` for a runnable demo.
+
 ### Audio Analyzer
 
 Built-in audio analysis powered by [librosa](https://librosa.org/):
@@ -420,6 +451,26 @@ client.close()
 | `eval` | LiveコンテキストでPython式を評価 |
 | `exec` | LiveコンテキストでPython文を実行 |
 
+### イベントPush（リアルタイム状態通知）
+
+LiveAgentは状態変化を**リアルタイムにpush**通知できます。テンポ変更・再生/停止・ミキサー操作・クリップ起動を、ポーリングなしで外部スクリプトに通知します。
+
+**仕組み:** LiveAgentが250ms毎にトランスポート+ミキサー+クリップ状態をスナップショットし、前回との差分をJSONイベントとして全subscriberにpushします。専用ポート（`8766`）を使用するため、request/responseチャネル（`8765`）への影響はありません。
+
+> **注意:** イベントpushは **Python/JS SDKクライアント** と raw TCPクライアントのみ利用可能です。MCPクライアント（Claude Desktop、Cursor）はpushを受信できません（MCPはrequest/response専用）。
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # 127.0.0.1:8766 に接続
+sub.on("transport_changed", lambda data: print("テンポ:", data))
+sub.on("mixer_changed", lambda data: print("ミキサー:", data))
+sub.on("clip_launched", lambda data: print("起動:", data))
+sub.listen()  # バックグラウンドスレッド; コールバックが状態変化で発火
+```
+
+**イベント種別:** `transport_changed`, `mixer_changed`, `clip_launched`, `clip_stopped`。カテゴリ購読: `["transport", "mixer", "scenes"]`。実行例は `examples/events_demo.py` を参照。
+
 ### オーディオ解析
 
 [librosa](https://librosa.org/)による内蔵オーディオ解析：
@@ -563,6 +614,25 @@ client.close()
 | `inspect_drum_rack` | 检查Drum Rack打击垫结构（调试用） |
 | `eval` | 在Live上下文中评估Python表达式 |
 | `exec` | 在Live上下文中执行Python语句 |
+
+### 事件推送（实时状态通知）
+
+LiveAgent可以将状态变化**实时推送**给订阅者。节奏变化、播放/停止、混音操作、剪辑启动无需轮询即可通知外部脚本。
+
+**原理：** LiveAgent每250ms对传输+混音+剪辑状态进行快照，与上次比较后将差异作为JSON事件推送给所有订阅者。使用专用端口（`8766`），不影响请求/响应通道（`8765`）。
+
+> **注意：** 事件推送仅适用于 **Python/JS SDK客户端** 和原始TCP客户端。MCP客户端（Claude Desktop、Cursor）无法接收推送（MCP仅支持请求/响应）。
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # 连接到 127.0.0.1:8766
+sub.on("transport_changed", lambda data: print("节奏:", data))
+sub.on("mixer_changed", lambda data: print("混音:", data))
+sub.listen()  # 后台线程；状态变化时触发回调
+```
+
+**事件类型：** `transport_changed`、`mixer_changed`、`clip_launched`、`clip_stopped`。可运行示例见 `examples/events_demo.py`。
 
 ### 音频分析
 
@@ -708,6 +778,25 @@ client.close()
 | `eval` | Live 컨텍스트에서 Python 표현식 평가 |
 | `exec` | Live 컨텍스트에서 Python 문 실행 |
 
+### 이벤트 Push (실시간 상태 알림)
+
+LiveAgent는 상태 변화를 **실시간으로 push**할 수 있습니다. 템포 변경, 재생/정지, 믹서 조작, 클립 실행을 폴링 없이 외부 스크립트에 알립니다.
+
+**원리:** LiveAgent가 250ms마다 트랜스포트+믹서+클립 상태를 스냅샷하여 이전과 비교한 차이를 JSON 이벤트로 모든 구독자에게 push합니다. 전용 포트(`8766`)를 사용하므로 요청/응답 채널(`8765`)에 영향을 주지 않습니다.
+
+> **참고:** 이벤트 push는 **Python/JS SDK 클라이언트**와 raw TCP 클라이언트만 사용할 수 있습니다. MCP 클라이언트(Claude Desktop, Cursor)는 push를 받을 수 없습니다(MCP는 요청/응답 전용).
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # 127.0.0.1:8766 에 연결
+sub.on("transport_changed", lambda data: print("템포:", data))
+sub.on("mixer_changed", lambda data: print("믹서:", data))
+sub.listen()  # 백그라운드 스레드; 상태 변화 시 콜백 발생
+```
+
+**이벤트 종류:** `transport_changed`, `mixer_changed`, `clip_launched`, `clip_stopped`. 실행 예제는 `examples/events_demo.py`를 참조.
+
 ### 오디오 분석
 
 [librosa](https://librosa.org/) 기반 내장 오디오 분석:
@@ -822,6 +911,25 @@ client.close()
 | `eval` | Evaluar expresión Python en contexto de Live |
 | `exec` | Ejecutar sentencia Python en contexto de Live |
 
+### Push de Eventos (Notificaciones de Estado en Tiempo Real)
+
+LiveAgent puede **enviar (push)** eventos de cambio de estado a suscriptores en tiempo real. Los cambios de tempo, play/stop, movimientos del mezclador y lanzamiento de clips se notifican sin necesidad de polling.
+
+**Cómo funciona:** LiveAgent captura el estado de transporte + mezclador + clips cada 250ms, lo compara con la captura anterior y envía un evento JSON a cada suscriptor. Usa un puerto dedicado (`8766`) para no afectar el canal request/response (`8765`).
+
+> **Nota:** El push de eventos está disponible solo para **clientes SDK Python/JS** y clientes TCP sin procesar. Los clientes MCP (Claude Desktop, Cursor) no pueden recibir push (MCP es solo request/response).
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # se conecta a 127.0.0.1:8766
+sub.on("transport_changed", lambda data: print("tempo:", data))
+sub.on("mixer_changed", lambda data: print("mixer:", data))
+sub.listen()  # hilo en segundo plano; los callbacks se disparan al cambiar el estado
+```
+
+**Tipos de evento:** `transport_changed`, `mixer_changed`, `clip_launched`, `clip_stopped`. Ejemplo ejecutable en `examples/events_demo.py`.
+
 ### Analizador de Audio
 
 Análisis de audio integrado con [librosa](https://librosa.org/):
@@ -935,6 +1043,25 @@ client.close()
 | `inspect_drum_rack` | Inspecter la structure des pads du Drum Rack (débogage) |
 | `eval` | Évaluer une expression Python dans le contexte Live |
 | `exec` | Exécuter une instruction Python dans le contexte Live |
+
+### Push d'Événements (Notifications d'État en Temps Réel)
+
+LiveAgent peut **pusher** des événements de changement d'état aux abonnés en temps réel. Les changements de tempo, play/stop, mouvements du mixeur et lancement de clips sont notifiés sans polling.
+
+**Comment ça marche :** LiveAgent capture l'état du transport + mixeur + clips toutes les 250ms, le compare à la capture précédente et pousse un événement JSON à chaque abonné. Utilise un port dédié (`8766`) pour ne pas affecter le canal request/response (`8765`).
+
+> **Note :** Le push d'événements est disponible uniquement pour les **clients SDK Python/JS** et clients TCP bruts. Les clients MCP (Claude Desktop, Cursor) ne peuvent pas recevoir de push (MCP est uniquement request/response).
+
+```python
+from live_agent_client import LiveAgentSubscriber
+
+sub = LiveAgentSubscriber()  # se connecte à 127.0.0.1:8766
+sub.on("transport_changed", lambda data: print("tempo:", data))
+sub.on("mixer_changed", lambda data: print("mixeur:", data))
+sub.listen()  # thread d'arrière-plan ; les callbacks se déclenchent au changement d'état
+```
+
+**Types d'événement :** `transport_changed`, `mixer_changed`, `clip_launched`, `clip_stopped`. Exemple exécutable dans `examples/events_demo.py`.
 
 ### Analyseur Audio
 
